@@ -1,0 +1,152 @@
+name: PlatformIO Linux Test
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO Core and Tools
+        run: |
+          pip install --upgrade platformio gcovr
+          sudo apt-get update && sudo apt-get install -y valgrind
+          mkdir -p .reports
+
+      - name: Run PlatformIO Build (ESP32-S3)
+        run: pio test -e esp32s3  --without-uploading --without-testing
+
+      - name: Run PlatformIO Test (Linux Native)
+        run: pio test -e native --junit-output-path test-results.xml
+
+      - name: Test Report
+        uses: dorny/test-reporter@v2
+        if: ${{ !cancelled() }} 
+        with:
+          name: Unit Test Results
+          path: test-results.xml
+          reporter: jest-junit
+
+      - name: Coverage Report Generation
+        run: |
+          gcovr -v --add-tracefile ".pio/tests/*.json" --xml-pretty -o .reports/coverage.xml --markdown .reports/coverage.md --root . --exclude test/.* --exclude .pio/.*
+          echo "## 📊 Code Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          cat .reports/coverage.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Sanitizers
+        continue-on-error: true 
+        run: |
+          exit_status=0
+          
+          pio test -e native_sanitizers || true
+          SUMMARY_FILE=$GITHUB_STEP_SUMMARY
+          LOG_DIR=".pio/tests"
+          
+          echo "## 🛡️ ASan/UBSan Memory Check Results" >> $SUMMARY_FILE
+          echo "---" >> $SUMMARY_FILE
+          
+          if [ -z "$(ls -A $LOG_DIR/asan_ubsan_*.log 2>/dev/null)" ]; then
+              echo "> **No ASan/UBSan log files found.**" >> $SUMMARY_FILE
+              exit 0
+          fi
+
+          for log_file in $LOG_DIR/asan_ubsan_*.log; do
+              TEST_NAME=$(basename $log_file | sed 's/asan_ubsan_\(.*\)\.log/\1/')
+              LINE_COUNT=$(wc -l < "$log_file")
+              
+              if [ "$LINE_COUNT" -gt 0 ]; then
+                  exit_status=1 # Mark step as failed
+                  
+                  echo "<details open><summary>❌ $TEST_NAME FAILED ($LINE_COUNT issues found)</summary>" >> $SUMMARY_FILE
+                  echo "" >> $SUMMARY_FILE # Mandatory blank line
+                  
+                  echo "A total of $LINE_COUNT issues were logged (UBSan runtime errors or ASan reports)." >> $SUMMARY_FILE
+                  
+                  echo "\`\`\`text" >> $SUMMARY_FILE
+                  cat "$log_file" >> $SUMMARY_FILE
+                  echo "\`\`\`" >> $SUMMARY_FILE
+                  
+                  echo "" >> $SUMMARY_FILE # Mandatory blank line
+                  echo "</details>" >> $SUMMARY_FILE
+                  echo "" >> $SUMMARY_FILE
+              else
+                  echo "* ✅ **$TEST_NAME** - No memory or undefined behavior errors reported." >> $SUMMARY_FILE
+              fi
+              echo "---" >> $SUMMARY_FILE
+          done
+          
+          exit $exit_status
+
+      - name: Valgrind
+        continue-on-error: true 
+        run: |
+          exit_status=0
+          
+          pio test -e native_valgrind || true 
+          
+          SUMMARY_FILE=$GITHUB_STEP_SUMMARY
+          LOG_DIR=".pio/tests"
+          
+          echo "## 🛡️ Valgrind Memory Check Results" >> $SUMMARY_FILE
+          echo "---" >> $SUMMARY_FILE
+          
+          if [ -z "$(ls -A $LOG_DIR/memory_*.txt 2>/dev/null)" ]; then
+              echo "> **No Valgrind log files found.**" >> $SUMMARY_FILE
+              exit 0
+          fi
+
+          for log_file in $LOG_DIR/memory_*.txt; do
+              TEST_NAME=$(basename $log_file | sed 's/memory_\(.*\)\.txt/\1/')
+              
+              # Check for the definitive success message "ERROR SUMMARY: 0 errors"
+              if ! grep -q "ERROR SUMMARY: 0 errors from 0 contexts" "$log_file"; then
+                  
+                  exit_status=1 # Mark step as failed
+                  
+                  # FAILURE CASE: Contains errors (e.g., ERROR SUMMARY: 1 errors) or process crashed.
+                  ERROR_COUNT=$(grep "ERROR SUMMARY:" "$log_file" | awk '{print $3}' || echo "many")
+                  ERROR_TEXT="${ERROR_COUNT:-An unknown number of} errors found" 
+
+                  echo "<details open><summary>❌ <b>$TEST_NAME FAILED</b> ($ERROR_TEXT)</summary>" >> $SUMMARY_FILE
+                  echo "" >> $SUMMARY_FILE
+                  
+                  echo "Valgrind detected memory errors or leaks:" >> $SUMMARY_FILE
+                  
+                  echo "\`\`\`text" >> $SUMMARY_FILE
+                  cat "$log_file" >> $SUMMARY_FILE
+                  echo "\`\`\`" >> $SUMMARY_FILE
+                  
+                  echo "" >> $SUMMARY_FILE
+                  echo "</details>" >> $SUMMARY_FILE
+                  echo "" >> $SUMMARY_FILE
+                  
+              else
+                  # SUCCESS CASE: Contains the success message
+                  echo "* ✅ **$TEST_NAME** - All memory blocks were freed, 0 errors reported." >> $SUMMARY_FILE
+              fi
+              echo "---" >> $SUMMARY_FILE
+          done
+          
+          # Exit with the determined status to signal success or failure to the runner
+          exit $exit_status
