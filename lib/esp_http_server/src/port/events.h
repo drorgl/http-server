@@ -22,8 +22,6 @@ typedef int esp_err_t;
 #define ESP_ERR_INVALID_STATE       0x103   /*!< Invalid state */
 #define ESP_ERR_NOT_FOUND           0x105   /*!< Requested resource not found */
 #define ESP_ERR_NO_MEM              0x101   /*!< Out of memory */
-#define ESP_ERR_NOT_SUPPORTED       0x106   /*!< Operation or feature not supported */
-
 
 // Defines for declaring and defining event base
 #define ESP_EVENT_DECLARE_BASE(id) extern esp_event_base_t const id

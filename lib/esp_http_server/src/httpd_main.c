@@ -92,19 +92,19 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
     }
     LOGD(TAG, LOG_FMT("newfd = %d"), new_fd);
 
-#ifdef _WIN32
-    DWORD timeout_ms = hd->config.recv_wait_timeout * 1000;
-    if (setsockopt(new_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms)) < 0) {
-        LOGE(TAG, LOG_FMT("error in setsockopt SO_RCVTIMEO (%d)"), WSAGetLastError());
-        goto exit;
-    }
+// #ifdef _WIN32
+//     DWORD timeout_ms = hd->config.recv_wait_timeout * 1000;
+//     if (setsockopt(new_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms)) < 0) {
+//         LOGE(TAG, LOG_FMT("error in setsockopt SO_RCVTIMEO (%d)"), WSAGetLastError());
+//         goto exit;
+//     }
 
-    timeout_ms = hd->config.send_wait_timeout * 1000;
-    if (setsockopt(new_fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms)) < 0) {
-        LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), WSAGetLastError());
-        goto exit;
-    }
-#else
+//     timeout_ms = hd->config.send_wait_timeout * 1000;
+//     if (setsockopt(new_fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms)) < 0) {
+//         LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), WSAGetLastError());
+//         goto exit;
+//     }
+// #else
     struct timeval tv;
     /* Set recv timeout of this fd as per config */
     tv.tv_sec = hd->config.recv_wait_timeout;
@@ -121,7 +121,7 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
         LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), errno);
         goto exit;
     }
-#endif
+// #endif
 
     if (hd->config.keep_alive_enable) {
         int keep_alive_enable = 1;
@@ -180,7 +180,6 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
         goto exit;
     }
     LOGD(TAG, LOG_FMT("complete"));
-    hd->http_server_state = HTTP_SERVER_EVENT_ON_CONNECTED;
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ON_CONNECTED, &new_fd, sizeof(int));
     return ESP_OK;
 exit:
@@ -188,6 +187,14 @@ exit:
     return ESP_FAIL;
 }
 
+struct httpd_ctrl_data {
+    enum httpd_ctrl_msg {
+        HTTPD_CTRL_SHUTDOWN,
+        HTTPD_CTRL_WORK,
+    } hc_msg;
+    httpd_work_fn_t hc_work;
+    void *hc_work_arg;
+};
 
 esp_err_t httpd_queue_work(httpd_handle_t handle, httpd_work_fn_t work, void *arg)
 {
@@ -630,7 +637,6 @@ esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config)
     }
 
     *handle = (httpd_handle_t)hd;
-    hd->http_server_state = HTTP_SERVER_EVENT_START;
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_START, NULL, 0);
 
     return ESP_OK;
@@ -684,13 +690,4 @@ esp_err_t httpd_stop(httpd_handle_t handle)
     httpd_delete(hd);
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_STOP, NULL, 0);
     return ESP_OK;
-}
-
-esp_http_server_event_id_t httpd_get_server_state(httpd_handle_t handle)
-{
-    struct httpd_data *hd = (struct httpd_data *) handle;
-    if (hd == NULL) {
-        return HTTP_SERVER_EVENT_ERROR;
-    }
-    return hd->http_server_state;
 }

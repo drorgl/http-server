@@ -8,7 +8,6 @@
 #include "esp_httpd_priv.h"
 #include <esp_http_server.h>
 #include "event_group.h"
-#include "httpd_crypto.h"
 #include <sha1.h>
 #include <base64_codec.h>
 #include <malloc.h>
@@ -144,20 +143,16 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
 
     LOGD(TAG, LOG_FMT("Server key before encoding: %s"), server_raw_text);
 
-#if CONFIG_MBEDTLS_SHA1_C || CONFIG_MBEDTLS_HARDWARE_SHA
-    esp_err_t err = httpd_crypto_sha1((const uint8_t *)server_raw_text, strlen(server_raw_text), server_key_hash);
-    if (err != ESP_OK) {
-        LOGE(TAG, "Failed to compute SHA-1 hash");
-        return err;
-    }
-#else
-    LOGE(TAG, "Please enable CONFIG_MBEDTLS_SHA1_C or CONFIG_MBEDTLS_HARDWARE_SHA to support SHA1 operations");
-    return ESP_ERR_NOT_SUPPORTED;
-#endif /* CONFIG_MBEDTLS_SHA1_C || CONFIG_MBEDTLS_HARDWARE_SHA */
+    /* Generate SHA-1 first and then encode to Base64 */
+    size_t key_len = strlen(server_raw_text);
+    sha1_context_t sha1_ctx;
+    sha1_init(&sha1_ctx);
+    sha1_update(&sha1_ctx, (uint8_t *)server_raw_text, key_len);
+    sha1_final(&sha1_ctx, server_key_hash);
 
-    size_t encoded_len = 0;
     base64_encode(server_key_hash, sizeof(server_key_hash),
                           server_key_encoded, sizeof(server_key_encoded));
+
     LOGD(TAG, LOG_FMT("Generated server key: %s"), server_key_encoded);
 
     char subprotocol[50] = { '\0' };
@@ -276,7 +271,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
 
         /* Grab the second byte */
         uint8_t second_byte = 0;
-        if (httpd_recv_with_opt(req, (char *)&second_byte, sizeof(second_byte), HTTPD_RECV_OPT_BLOCKING) < sizeof(second_byte)) {
+        if (httpd_recv_with_opt(req, (char *)&second_byte, sizeof(second_byte), false) <= 0) {
             LOGW(TAG, LOG_FMT("Failed to receive the second byte"));
             return ESP_FAIL;
         }
@@ -293,7 +288,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         } else if (init_len == 126) {
             /* Case 2: If length byte is 126, then this frame's length bit is 16 bits */
             uint8_t length_bytes[2] = { 0 };
-            if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), HTTPD_RECV_OPT_BLOCKING) < sizeof(length_bytes)) {
+            if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false) <= 0) {
                 LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length"));
                 return ESP_FAIL;
             }
@@ -302,7 +297,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         } else if (init_len == 127) {
             /* Case 3: If length is byte 127, then this frame's length bit is 64 bits */
             uint8_t length_bytes[8] = { 0 };
-            if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), HTTPD_RECV_OPT_BLOCKING) < sizeof(length_bytes)) {
+            if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false) <= 0) {
                 LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length"));
                 return ESP_FAIL;
             }
@@ -318,7 +313,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         }
         /* If this frame is masked, dump the mask as well */
         if (masked) {
-            if (httpd_recv_with_opt(req, (char *)aux->mask_key, sizeof(aux->mask_key), HTTPD_RECV_OPT_BLOCKING) < sizeof(aux->mask_key)) {
+            if (httpd_recv_with_opt(req, (char *)aux->mask_key, sizeof(aux->mask_key), false) <= 0) {
                 LOGW(TAG, LOG_FMT("Failed to receive mask key"));
                 return ESP_FAIL;
             }
@@ -355,7 +350,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
     size_t offset = 0;
 
     while (left_len > 0) {
-        int read_len = httpd_recv_with_opt(req, (char *)frame->payload + offset, left_len, HTTPD_RECV_OPT_NONE);
+        int read_len = httpd_recv_with_opt(req, (char *)frame->payload + offset, left_len, false);
         if (read_len <= 0) {
             LOGW(TAG, LOG_FMT("Failed to receive payload"));
             return ESP_FAIL;
@@ -463,7 +458,7 @@ esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
     /* Read the first byte from the frame to get the FIN flag and Opcode */
     /* Please refer to RFC6455 Section 5.2 for more details */
     uint8_t first_byte = 0;
-    if (httpd_recv_with_opt(req, (char *)&first_byte, sizeof(first_byte), HTTPD_RECV_OPT_BLOCKING) < sizeof(first_byte)) {
+    if (httpd_recv_with_opt(req, (char *)&first_byte, sizeof(first_byte), false) <= 0) {
         /* If the recv() return code is <= 0, then this socket FD is invalid (i.e. a broken connection) */
         /* Here we mark it as a Close message and close it later. */
         LOGW(TAG, LOG_FMT("Failed to read header byte (socket FD invalid), closing socket now"));

@@ -43,7 +43,7 @@ To override default verbosity level at file or component scope, define the `MAXI
 At file scope, define it before including `log.h`, e.g.:
 
 ```c
-#define MAXIMUM_ENABLED_LOG_LEVEL ESP_LOG_VERBOSE
+#define MAXIMUM_ENABLED_LOG_LEVEL LOG_VERBOSE
 #include "log.h"
 ```
 

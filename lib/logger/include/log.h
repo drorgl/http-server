@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 #include <stdarg.h>
+#include <inttypes.h>
+
 
 #ifdef LOG_CONFIG
 #include LOG_CONFIG

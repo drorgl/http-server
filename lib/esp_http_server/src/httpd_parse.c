@@ -121,8 +121,6 @@ static esp_err_t cb_url(http_parser *parser,
                         const char *at, size_t length)
 {
     parser_data_t *parser_data = (parser_data_t *) parser->data;
-    httpd_req_t          *req   = parser_data->req;
-    struct httpd_req_aux *raux  = req->aux;
 
     if (parser_data->status == PARSING_IDLE) {
         LOGD(TAG, LOG_FMT("message begin"));
@@ -141,9 +139,9 @@ static esp_err_t cb_url(http_parser *parser,
     LOGD(TAG, LOG_FMT("processing url = %.*s"), (int)length, at);
 
     /* Update length of URL string */
-    if ((parser_data->last.length += length) > raux->max_uri_len) {
+    if ((parser_data->last.length += length) > HTTPD_MAX_URI_LEN) {
         LOGW(TAG, LOG_FMT("URI length (%"NEWLIB_NANO_COMPAT_FORMAT") greater than supported (%d)"),
-                 NEWLIB_NANO_COMPAT_CAST(parser_data->last.length), raux->max_uri_len);
+                 NEWLIB_NANO_COMPAT_CAST(parser_data->last.length), HTTPD_MAX_URI_LEN);
         parser_data->error = HTTPD_414_URI_TOO_LONG;
         parser_data->status = PARSING_FAILED;
         return ESP_FAIL;
@@ -226,7 +224,6 @@ static esp_err_t cb_header_field(http_parser *parser, const char *at, size_t len
         parser_data->last.at     = ra->scratch;
         parser_data->last.length = 0;
         parser_data->status      = PARSING_HDR_FIELD;
-        ra->scratch_size_limit   = ra->max_req_hdr_len;
 
         /* Stop parsing for now and give control to process */
         if (pause_parsing(parser, at) != ESP_OK) {
@@ -244,7 +241,6 @@ static esp_err_t cb_header_field(http_parser *parser, const char *at, size_t len
         parser_data->last.at     = at;
         parser_data->last.length = 0;
         parser_data->status      = PARSING_HDR_FIELD;
-        ra->scratch_size_limit   = ra->max_req_hdr_len;
 
         /* Increment header count */
         ra->req_hdrs_count++;
@@ -416,8 +412,6 @@ static esp_err_t cb_headers_complete(http_parser *parser)
 
     parser_data->status = PARSING_BODY;
     ra->remaining_len = r->content_len;
-    struct httpd_data *hd = (struct httpd_data *) r->handle;
-    hd->http_server_state = HTTP_SERVER_EVENT_ON_HEADER;
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ON_HEADER, &(ra->sd->fd), sizeof(int));
     return ESP_OK;
 }
@@ -495,35 +489,16 @@ static esp_err_t cb_no_body(http_parser *parser)
     return ESP_OK;
 }
 
-static int read_block(httpd_req_t *req, http_parser *parser, size_t offset, size_t length)
+static int read_block(httpd_req_t *req, size_t offset, size_t length)
 {
     struct httpd_req_aux *raux  = req->aux;
-    parser_data_t *parser_data = (parser_data_t *) parser->data;
 
     /* Limits the read to scratch buffer size */
-    ssize_t buf_len = MIN(length, (raux->scratch_size_limit - offset));
+    ssize_t buf_len = MIN(length, (sizeof(raux->scratch) - offset));
     if (buf_len <= 0) {
         return 0;
     }
-/* Calculate the offset of the current position from the start of the buffer,
-     * as after reallocating the buffer, the base address of the buffer may change.
-     */
-    size_t at_offset = parser_data->last.at - raux->scratch;
-    /* Allocate the buffer according to offset and buf_len. Offset is
-       from where the reading will start and buf_len is till what length
-       the buffer will be read.
-    */
-    char *new_scratch = (char *) realloc(raux->scratch, offset + buf_len);
-    if (new_scratch == NULL) {
-        free(raux->scratch);
-        raux->scratch = NULL;
-        LOGE(TAG, "Unable to allocate the scratch buffer");
-        return 0;
-    }
-    raux->scratch = new_scratch;
-    parser_data->last.at = raux->scratch + at_offset;
-    raux->scratch_cur_size = offset + buf_len;
-    LOGD(TAG, "scratch buf qsize = %d", raux->scratch_cur_size);
+
     /* Receive data into buffer. If data is pending (from unrecv) then return
      * immediately after receiving pending data, as pending data may just complete
      * this request packet. */
@@ -567,14 +542,13 @@ static int parse_block(http_parser *parser, size_t offset, size_t length)
          * parse means no more space left on buffer,
          * therefore it can be inferred that the
          * request URI/header must be too long */
+        LOGW(TAG, LOG_FMT("request URI/header too long"));
         switch (data->status) {
             case PARSING_URL:
-                LOGW(TAG, LOG_FMT("request URI too long"));
                 data->error = HTTPD_414_URI_TOO_LONG;
                 break;
             case PARSING_HDR_FIELD:
             case PARSING_HDR_VALUE:
-                LOGW(TAG, LOG_FMT("request header too long"));
                 data->error = HTTPD_431_REQ_HDR_FIELDS_TOO_LARGE;
                 break;
             default:
@@ -667,7 +641,7 @@ static esp_err_t httpd_parse_req(struct httpd_data *hd)
     offset = 0;
     do {
         /* Read block into scratch buffer */
-        if ((blk_len = read_block(r, &parser, offset, PARSER_BLOCK_SIZE)) < 0) {
+        if ((blk_len = read_block(r, offset, PARSER_BLOCK_SIZE)) < 0) {
             if (blk_len == HTTPD_SOCK_ERR_TIMEOUT) {
                 /* Retry read in case of non-fatal timeout error.
                  * read_block() ensures that the timeout error is
@@ -714,18 +688,13 @@ static void init_req(httpd_req_t *r, httpd_config_t *config)
 static void init_req_aux(struct httpd_req_aux *ra, httpd_config_t *config)
 {
     ra->sd = 0;
-    // memset(ra->scratch, 0, sizeof(ra->scratch));
+    memset(ra->scratch, 0, sizeof(ra->scratch));
     ra->remaining_len = 0;
     ra->status = 0;
     ra->content_type = 0;
     ra->first_chunk_sent = 0;
     ra->req_hdrs_count = 0;
     ra->resp_hdrs_count = 0;
-    ra->scratch = NULL;
-    ra->scratch_cur_size = 0;
-    ra->max_req_hdr_len = (config->max_req_hdr_len > 0) ? config->max_req_hdr_len : CONFIG_HTTPD_MAX_REQ_HDR_LEN;
-    ra->max_uri_len = (config->max_uri_len > 0) ? config->max_uri_len : CONFIG_HTTPD_MAX_URI_LEN;
-    ra->scratch_size_limit = ra->max_uri_len;
 #if CONFIG_HTTPD_WS_SUPPORT
     ra->ws_handshake_detect = false;
 #endif
@@ -756,10 +725,6 @@ static void httpd_req_cleanup(httpd_req_t *r)
 
     /* Clear out the request and request_aux structures */
     ra->sd = NULL;
-    free(ra->scratch);
-    ra->scratch = NULL;
-    ra->scratch_size_limit = 0;
-    ra->scratch_cur_size = 0;
     r->handle = NULL;
     r->aux = NULL;
     r->user_ctx = NULL;
@@ -801,9 +766,6 @@ esp_err_t httpd_req_new(struct httpd_data *hd, struct sock_db *sd)
              sd->ws_handler != NULL ? "Yes" : "No",
              sd->ws_close ? "Yes" : "No");
     if (sd->ws_handshake_done && sd->ws_handler != NULL) {
-        if (sd->ws_handshake_in_progress) {
-            return ESP_OK;
-        }
         if (sd->ws_close == true) {
             /* WS was marked as close state, do not deal with this socket */
             LOGD(TAG, LOG_FMT("WS was marked close"));
@@ -948,7 +910,6 @@ esp_err_t httpd_query_key_value(const char *qry_str, const char *key, char *val,
         if (buf_len <= val_size) { // Check if buffer can hold value + null terminator
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }
-        
         return ESP_OK;
     }
     LOGD(TAG, LOG_FMT("key %s not found"), key);
@@ -1226,45 +1187,4 @@ esp_err_t httpd_req_get_cookie_val(httpd_req_t *req, const char *cookie_name, ch
     free(cookie_str);
     return ret;
 
-}
-
-/* Get the length of the raw request data received from the client.
- */
-size_t httpd_get_raw_req_data_len(httpd_req_t *req)
-{
-    if (req == NULL) {
-        return 0;
-    }
-    struct httpd_req_aux *ra = req->aux;
-    return ra->scratch_cur_size;
-}
-
-/* Get the raw request data, which contains the raw HTTP request headers and
- * URI related information. Internally, the httpd_parse.c file uses a scratch buffer
- * to store the original HTTP request data exactly as received from the client.
- * This function returns the contents of this scratch buffer.
- *
- * NOTE - This function returns different data for different http server states.
- * 1. HTTP_SERVER_EVENT_ON_CONNECTED - Returns the data containing information related to URI and headers.
- * 2. HTTP_SERVER_EVENT_ON_HEADER - Returns the data containing information related to only headers.
- * 3. HTTP_SERVER_EVENT_ON_DATA - Returns the data containing information related to only headers.
- * 4. HTTP_SERVER_EVENT_SENT_DATA - Returns the data containing information related to only headers.
- * 5. HTTP_SERVER_EVENT_DISCONNECTED - Returns the data containing information related to only headers.
- * 6. HTTP_SERVER_EVENT_STOP - Returns the data containing information related to only headers.
- */
-esp_err_t httpd_get_raw_req_data(httpd_req_t *req, char *buf, size_t buf_len)
-{
-    if (req == NULL || buf == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (buf_len == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (req->aux == NULL) {
-        LOGW(TAG, "Request auxiliary data is NULL for URI: [%s]", req->uri ? req->uri : "(null)");
-        return ESP_ERR_INVALID_ARG;
-    }
-    struct httpd_req_aux *ra = req->aux;
-    memcpy(buf, ra->scratch, buf_len);
-    return ESP_OK;
 }
