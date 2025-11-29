@@ -1,0 +1,33 @@
+{
+  "name": "http-parser",
+  "version": "2.9.4",
+  "description": "Parser for HTTP messages written in C",
+  "keywords": "http, parser, networking",
+  "authors": [
+    {
+      "name": "Joyent, Inc. and other Node contributors",
+      "email": "ry@clouds denominator with Node.js"
+    }
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nodejs/http-parser",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nodejs/http-parser.git"
+  },
+  "include": [
+    "http_parser.h",
+    "http_parser.c",
+    "*.md",
+    "LICENSE*"
+  ],
+  "exclude": [
+    "contrib/",
+    "test.c"
+  ],
+  "build": {
+    "flags": [
+      "-DXHTTP_PARSER_STRICT=0"
+    ]
+  }
+}
