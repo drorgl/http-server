@@ -3,15 +3,32 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <stdlib.h>
-#include <log.h>
-#include <esp_err.h>
-#include <fcntl.h>
+
+#include <stdint.h>
+#include <stdbool.h>
+
 #include <errno.h>
+#include <malloc.h>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+#endif
+
+#ifdef ESP_PLATFORM
+#include <stdlib.h>
+#include <esp_err.h>
 #include <unistd.h>
 
 #include <esp_http_server.h>
+#endif
+
 #include "esp_httpd_priv.h"
+#include <log.h>
+
+
 
 static const char *TAG = "httpd_sess";
 
@@ -57,7 +74,37 @@ void httpd_sess_enum(struct httpd_data *hd, httpd_session_enum_function enum_fun
 // Check if a FD is valid
 static int fd_is_valid(int fd)
 {
+#ifdef _WIN32
+    // 1. Check for the general INVALID_SOCKET value (like -1 on Unix)
+    if (fd == (int)INVALID_SOCKET) {
+        return 0; // Not valid
+    }
+
+    // 2. Attempt a non-destructive socket operation
+    int error = 0;
+    int len = sizeof(error);
+    
+    // getsockopt will fail on an invalid socket handle.
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == SOCKET_ERROR) 
+    {
+        // On failure, check the specific Windows Sockets error code.
+        int wsa_error = WSAGetLastError();
+        
+        // WSAENOTSOCK (10038) is the Winsock error for "Socket operation on non-socket," 
+        // which is the closest Windows equivalent to EBADF (Bad File Descriptor).
+        if (wsa_error == WSAENOTSOCK) {
+            return 0; // Definitely not a socket/valid file descriptor
+        }
+
+        // If it fails for another reason, the socket *handle* itself might still be valid, 
+        // but the socket might be in an error state (which SO_ERROR would report).
+        // Since we are checking handle validity, we return true for other errors.
+    }
+
+    return 1; // Considered valid (handle exist
+#else
     return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+#endif
 }
 
 static int enum_function(struct sock_db *session, void *context)
@@ -84,7 +131,11 @@ static int enum_function(struct sock_db *session, void *context)
         break;
     // Find fd
     case HTTPD_TASK_FIND_FD:
-        found = (session->fd == ctx->fd);
+        if (ctx->fd < 0) { // If searching for an invalid FD, don't find anything
+            found = 0;
+        } else {
+            found = (session->fd == ctx->fd);
+        }
         break;
     // Set descriptor
     case HTTPD_TASK_SET_DESCRIPTOR:
@@ -95,9 +146,9 @@ static int enum_function(struct sock_db *session, void *context)
             }
         }
         break;
-    // Delete invalid session
+    // Delete invalid session - FIXED: Only check sockets that were previously valid (>= 0)
     case HTTPD_TASK_DELETE_INVALID:
-        if (!fd_is_valid(session->fd)) {
+        if (session->fd >= 0 && !fd_is_valid(session->fd)) {
             LOGW(TAG, LOG_FMT("Closing invalid socket %d"), session->fd);
             httpd_sess_delete(ctx->hd, session);
         }
@@ -365,7 +416,7 @@ void httpd_sess_delete(struct httpd_data *hd, struct sock_db *session)
             .l_onoff = true,
             .l_linger = hd->config.linger_timeout,
         };
-        if (setsockopt(session->fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(struct linger)) < 0) {
+        if (setsockopt(session->fd, SOL_SOCKET, SO_LINGER, (char*)&so_linger, sizeof(struct linger)) < 0) {
             LOGW(TAG, LOG_FMT("error enabling SO_LINGER (%d)"), errno);
         }
     }

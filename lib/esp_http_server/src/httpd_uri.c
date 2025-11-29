@@ -1,17 +1,22 @@
 /*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2021 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
+#ifdef ESP_PLATFORM
 #include <errno.h>
-#include <log.h>
 #include <esp_err.h>
 #include <http_parser.h>
 
-#include <esp_http_server.h>
+#endif
+
+#include <log.h>
 #include "esp_httpd_priv.h"
+#include "esp_http_server.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <malloc.h>
 
 static const char *TAG = "httpd_uri";
 
@@ -323,7 +328,7 @@ esp_err_t httpd_uri(struct httpd_data *hd)
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     struct httpd_req_aux   *aux = req->aux;
     if (uri->is_websocket && aux->ws_handshake_detect && uri->method == HTTP_GET) {
-#ifdef CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT
+        #ifdef CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT
         if (uri->ws_pre_handshake_cb && uri->ws_pre_handshake_cb(req) != ESP_OK) {
             LOGW(TAG, LOG_FMT("ws_pre_handshake_cb failed"));
             return ESP_FAIL;
@@ -331,12 +336,15 @@ esp_err_t httpd_uri(struct httpd_data *hd)
 #endif
 
         LOGD(TAG, LOG_FMT("Responding WS handshake to sock %d"), aux->sd->fd);
+        aux->sd->ws_handshake_in_progress = true;
         esp_err_t ret = httpd_ws_respond_server_handshake(&hd->hd_req, uri->supported_subprotocol);
         if (ret != ESP_OK) {
+            aux->sd->ws_handshake_in_progress = false;
             return ret;
         }
 
         aux->sd->ws_handshake_done = true;
+        aux->sd->ws_handshake_in_progress = false;
         aux->sd->ws_handler = uri->handler;
         aux->sd->ws_control_frames = uri->handle_ws_control_frames;
         aux->sd->ws_user_ctx = uri->user_ctx;

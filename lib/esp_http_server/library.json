@@ -1,0 +1,13 @@
+{
+    "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+    "name": "esp http server",
+    "version": "0.0.1",
+    "description": "http server",
+    "keywords": "http",
+    "license": "Apache-2.0",
+    "frameworks": "*",
+    "platforms": "windows_x86",
+    "build": {
+        "includeDir": "include"
+    }
+}

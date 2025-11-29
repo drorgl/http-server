@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,13 +9,26 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
+#include "../src/port/events.h"
+#include <limits.h>
+
+#ifdef ESP_PLATFORM
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <http_parser.h>
 #include <sdkconfig.h>
 #include <esp_err.h>
 #include <esp_event.h>
 #include <esp_event_base.h>
+#else
+
+#endif
+
+#include <http_parser.h>
+#include "esp_http_server_config.h"
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,14 +62,16 @@ typedef struct {
 /*
 note: esp_https_server.h includes a customized copy of this
 initializer that should be kept in sync
+
+.stack_size         = 4096,                     \
 */
 #define HTTPD_DEFAULT_CONFIG() {                        \
-        .task_priority      = tskIDLE_PRIORITY+5,       \
-        .stack_size         = 4096,                     \
-        .core_id            = tskNO_AFFINITY,           \
-        .task_caps          = (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),       \
-        .max_req_hdr_len    = CONFIG_HTTPD_MAX_REQ_HDR_LEN,    \
-        .max_uri_len        = CONFIG_HTTPD_MAX_URI_LEN,        \
+        .task_priority      = 0,       \
+        .stack_size         = 1024 * 1024,                     \
+        .core_id            = 0,           \
+        .task_caps          = 0,       \
+        .max_req_hdr_len    = CONFIG_HTTPD_MAX_REQ_HDR_LEN, \
+        .max_uri_len        = CONFIG_HTTPD_MAX_URI_LEN, \
         .server_port        = 80,                       \
         .ctrl_port          = ESP_HTTPD_DEF_CTRL_PORT,  \
         .max_open_sockets   = 7,                        \
@@ -64,8 +79,8 @@ initializer that should be kept in sync
         .max_resp_headers   = 8,                        \
         .backlog_conn       = 5,                        \
         .lru_purge_enable   = false,                    \
-        .recv_wait_timeout  = 5,                        \
-        .send_wait_timeout  = 5,                        \
+        .recv_wait_timeout  = 1,                        \
+        .send_wait_timeout  = 1,                        \
         .global_user_ctx = NULL,                        \
         .global_user_ctx_free_fn = NULL,                \
         .global_transport_ctx = NULL,                   \
@@ -172,7 +187,7 @@ typedef bool (*httpd_uri_match_func_t)(const char *reference_uri,
 typedef struct httpd_config {
     unsigned    task_priority;      /*!< Priority of FreeRTOS task which runs the server */
     size_t      stack_size;         /*!< The maximum stack size allowed for the server task */
-    BaseType_t  core_id;            /*!< The core the HTTP server task will run on */
+    uint8_t  core_id;            /*!< The core the HTTP server task will run on */
     uint32_t    task_caps;          /*!< The memory capabilities to use when allocating the HTTP server task's stack */
 
     /**
@@ -458,7 +473,7 @@ typedef struct httpd_uri {
      * Pointer to subprotocol supported by URI
      */
     const char *supported_subprotocol;
-
+    
 #if CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT || __DOXYGEN__
     /**
      * Pointer to WebSocket pre-handshake callback. This will be called before the WebSocket handshake is processed,
@@ -1234,7 +1249,7 @@ esp_err_t httpd_resp_set_status(httpd_req_t *r, const char *status);
 /* Some commonly used content types */
 #define HTTPD_TYPE_JSON   "application/json"            /*!< HTTP Content type JSON */
 #define HTTPD_TYPE_TEXT   "text/html"                   /*!< HTTP Content type text/HTML */
-#define HTTPD_TYPE_OCTET  "application/octet-stream"    /*!< HTTP Content type octext-stream */
+#define HTTPD_TYPE_OCTET  "application/octet-stream"    /*!< HTTP Content type octet-stream */
 
 /**
  * @brief   API to set the HTTP content type
@@ -1776,7 +1791,7 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
 
 /**
  * @brief Checks the supplied socket descriptor if it belongs to any active client
- * of this server instance and if the websoket protocol is active
+ * of this server instance and if the websocket protocol is active
  *
  * @param[in] hd      Server instance data
  * @param[in] fd      Socket descriptor
@@ -1820,7 +1835,7 @@ esp_err_t httpd_ws_send_data_async(httpd_handle_t handle, int socket, httpd_ws_f
 /** End of WebSocket related stuff
  * @}
  */
-
+ 
 /**
  * @brief Get the length of the raw request data received from the client.
  *

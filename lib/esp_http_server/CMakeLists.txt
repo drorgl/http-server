@@ -1,11 +1,12 @@
-set(priv_req mbedtls lwip esp_timer)
-set(priv_inc_dir "src/util" "src/port/esp32")
+set(priv_req mbedtls)
+set(priv_inc_dir "src/util")
 set(requires http_parser esp_event)
-
-if(CONFIG_HTTPD_SERVER_PSA_CRYPTO_MIGRATE)
-    set(HTTPD_CRYPTO_SRC "src/httpd_crypto_psa.c")
+if(NOT ${IDF_TARGET} STREQUAL "linux")
+    list(APPEND priv_req lwip esp_timer)
+    list(APPEND priv_inc_dir "src/port/esp32")
 else()
-    set(HTTPD_CRYPTO_SRC "src/httpd_crypto_mbedtls.c")
+    list(APPEND priv_inc_dir "src/port/linux")
+    list(APPEND priv_req pthread)
 endif()
 
 idf_component_register(SRCS "src/httpd_main.c"
@@ -14,7 +15,6 @@ idf_component_register(SRCS "src/httpd_main.c"
                             "src/httpd_txrx.c"
                             "src/httpd_uri.c"
                             "src/httpd_ws.c"
-                            ${HTTPD_CRYPTO_SRC}
                             "src/util/ctrl_sock.c"
                     INCLUDE_DIRS "include"
                     PRIV_INCLUDE_DIRS ${priv_inc_dir}

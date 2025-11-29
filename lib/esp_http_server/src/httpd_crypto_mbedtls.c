@@ -3,10 +3,15 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+#include "httpd_crypto.h"
 
-#include "mbedtls/sha1.h"
+#include <sha1.h>
+#include <log.h>
+#include "port/events.h"
+
+#ifdef ESP_PLATFORM
 #include "esp_err.h"
-#include "LOG.h"
+#endif
 
 static const char *TAG = "httpd_crypto_mbedtls";
 
@@ -14,10 +19,13 @@ static const char *TAG = "httpd_crypto_mbedtls";
 
 esp_err_t httpd_crypto_sha1(const uint8_t *data, size_t data_len, uint8_t *hash)
 {
+    
     if (data == NULL || data_len == 0 || hash == NULL) {
         LOGE(TAG, "Invalid input parameters");
         return ESP_FAIL;
     }
+
+    #ifdef ESP_PLATFORM
 
     esp_err_t err = ESP_FAIL;
     mbedtls_sha1_context ctx;
@@ -42,4 +50,12 @@ esp_err_t httpd_crypto_sha1(const uint8_t *data, size_t data_len, uint8_t *hash)
 exit:
     mbedtls_sha1_free(&ctx);
     return err;
+
+    #else
+    sha1_context_t context;
+    sha1_init(&context);
+    sha1_update(&context, (const uint8_t *)data,data_len);
+    sha1_final(&context, hash);
+    return ESP_OK;
+    #endif
 }

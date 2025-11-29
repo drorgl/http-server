@@ -1,18 +1,23 @@
 /*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include "log.h"
 
+#include "../port/win/network.h"
+
+#ifdef ESP_PLATFORM
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "sdkconfig.h"
-#include "LOG.h"
 #include "ctrl_sock.h"
+#endif
 
 #if CONFIG_IDF_TARGET_LINUX
 #define IPV4_ENABLED      1
@@ -24,13 +29,15 @@
 #define LOOPBACK_ENABLED  CONFIG_LWIP_NETIF_LOOPBACK
 #endif  // !CONFIG_IDF_TARGET_LINUX
 
+static const char * TAG = "ctrl-sock";
+
 /* Control socket, because in some network stacks select can't be woken up any
  * other way
  */
 int cs_create_ctrl_sock(int port)
 {
 #if !LOOPBACK_ENABLED
-    LOGE("esp_http_server", "Please enable LWIP_NETIF_LOOPBACK for %s API", __func__);
+    LOGE(TAG, "Please enable LWIP_NETIF_LOOPBACK for %s API", __func__);
     return -1;
 #endif
 
@@ -55,6 +62,13 @@ int cs_create_ctrl_sock(int port)
     inet6_aton("::1", &addr6->sin6_addr);
     addr_len = sizeof(struct sockaddr_in6);
 #endif
+    int enable = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(enable)) < 0) {
+        /* This will fail if CONFIG_LWIP_SO_REUSE is not enabled. But
+         * it does not affect the normal working of the HTTP Server */
+        LOGW(TAG, "error in setsockopt SO_REUSEADDR (%d)", errno);
+    }
+
     ret = bind(fd, (struct sockaddr *)&addr, addr_len);
     if (ret < 0) {
         close(fd);

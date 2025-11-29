@@ -1,24 +1,25 @@
 /*
- * SPDX-FileCopyrightText: 2020-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2020-2021 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
-
+#include <log.h>
+#include "esp_httpd_priv.h"
+#include <esp_http_server.h>
+#include "event_group.h"
+#include "httpd_crypto.h"
+#include <sha1.h>
+#include <base64_codec.h>
+#include <malloc.h>
+#ifdef ESP_PLATFORM
 #include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
-#include <log.h>
 #include <esp_err.h>
 
-#include <mbedtls/base64.h>
-#include <mbedtls/error.h>
+#endif
 
-#include <esp_http_server.h>
-#include "esp_httpd_priv.h"
-#include "freertos/event_groups.h"
-#include "sdkconfig.h"
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
 
@@ -32,7 +33,7 @@ typedef struct {
     transfer_complete_cb callback;
     void *arg;
     bool blocking;
-    EventGroupHandle_t transfer_done;
+    event_group_handle_t transfer_done;
 } async_transfer_t;
 
 static const char *TAG="httpd_ws";
@@ -53,23 +54,23 @@ static const char *TAG="httpd_ws";
  */
 static const char ws_magic_uuid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-/* Checks if any subprotocols from the comma separated list matches the supported one
+/* Checks if any subprotocols from the comma seperated list matches the supported one
  *
  * Returns true if the response should contain a protocol field
 */
 
 /**
- * @brief Checks if any subprotocols from the comma separated list matches the supported one
+ * @brief Checks if any subprotocols from the comma seperated list matches the supported one
  *
  * @param supported_subprotocol[in] The subprotocol supported by the URI
- * @param subprotocol[in],  [in]: A comma separate list of subprotocols requested
+ * @param subprotocol[in],  [in]: A comma seperate list of subprotocols requested
  * @param buf_len Length of the buffer
  * @return true: found a matching subprotocol
  * @return false
  */
 static bool httpd_ws_get_response_subprotocol(const char *supported_subprotocol, char *subprotocol, size_t buf_len)
 {
-    /* Request didn't contain any subprotocols */
+    /* Request didnt contain any subprotocols */
     if (strnlen(subprotocol, buf_len) == 0) {
         return false;
     }
@@ -79,7 +80,7 @@ static bool httpd_ws_get_response_subprotocol(const char *supported_subprotocol,
         return false;
     }
 
-    /* Get first subprotocol from comma separated list */
+    /* Get first subprotocol from comma seperated list */
     char *rest = NULL;
     char *s = strtok_r(subprotocol, ", ", &rest);
     do {
@@ -155,14 +156,13 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
 #endif /* CONFIG_MBEDTLS_SHA1_C || CONFIG_MBEDTLS_HARDWARE_SHA */
 
     size_t encoded_len = 0;
-    mbedtls_base64_encode((uint8_t *)server_key_encoded, sizeof(server_key_encoded), &encoded_len,
-                          server_key_hash, sizeof(server_key_hash));
-
+    base64_encode(server_key_hash, sizeof(server_key_hash),
+                          server_key_encoded, sizeof(server_key_encoded));
     LOGD(TAG, LOG_FMT("Generated server key: %s"), server_key_encoded);
 
     char subprotocol[50] = { '\0' };
     if (httpd_req_get_hdr_value_str(req, "Sec-WebSocket-Protocol", subprotocol, sizeof(subprotocol) - 1) == ESP_ERR_HTTPD_RESULT_TRUNC) {
-        LOGW(TAG, "Sec-WebSocket-Protocol length exceeded buffer size of %"NEWLIB_NANO_COMPAT_FORMAT", was truncated", NEWLIB_NANO_COMPAT_CAST(sizeof(subprotocol)));
+        LOGW(TAG, "Sec-WebSocket-Protocol length exceeded buffer size of %"NEWLIB_NANO_COMPAT_FORMAT", was trunctated", NEWLIB_NANO_COMPAT_CAST(sizeof(subprotocol)));
     }
 
 
@@ -303,7 +303,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             /* Case 3: If length is byte 127, then this frame's length bit is 64 bits */
             uint8_t length_bytes[8] = { 0 };
             if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), HTTPD_RECV_OPT_BLOCKING) < sizeof(length_bytes)) {
-                LOGW(TAG, LOG_FMT("Failed to receive 8 bytes length"));
+                LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length"));
                 return ESP_FAIL;
             }
 
@@ -543,7 +543,7 @@ static void httpd_ws_send_cb(void *arg)
     esp_err_t err = httpd_ws_send_frame_async(trans->handle, trans->socket, &trans->frame);
 
     if (trans->blocking) {
-        xEventGroupSetBits(trans->transfer_done, err ? WS_SEND_FAILED : WS_SEND_OK);
+        event_group_set_bits(trans->transfer_done, err ? WS_SEND_FAILED : WS_SEND_OK);
     } else if (trans->callback) {
         trans->callback(err, trans->socket, trans->arg);
     }
@@ -558,7 +558,7 @@ esp_err_t httpd_ws_send_data(httpd_handle_t handle, int socket, httpd_ws_frame_t
         return ESP_ERR_NO_MEM;
     }
 
-    EventGroupHandle_t transfer_done = xEventGroupCreate();
+    event_group_handle_t transfer_done = event_group_create();
     if (!transfer_done) {
         free(transfer);
         return ESP_ERR_NO_MEM;
@@ -572,15 +572,15 @@ esp_err_t httpd_ws_send_data(httpd_handle_t handle, int socket, httpd_ws_frame_t
 
     esp_err_t err = httpd_queue_work(handle, httpd_ws_send_cb, transfer);
     if (err != ESP_OK) {
-        vEventGroupDelete(transfer_done);
+        event_group_delete(transfer_done);
         free(transfer);
         return err;
     }
 
-    EventBits_t status = xEventGroupWaitBits(transfer_done, WS_SEND_OK | WS_SEND_FAILED,
-                                             pdTRUE, pdFALSE, portMAX_DELAY);
+    event_group_bits_t status = event_group_wait_bits(transfer_done, WS_SEND_OK | WS_SEND_FAILED,
+                                             true, false, (uint32_t)-1);
 
-    vEventGroupDelete(transfer_done);
+    event_group_delete(transfer_done);
 
     return (status & WS_SEND_OK) ? ESP_OK : ESP_FAIL;
 }

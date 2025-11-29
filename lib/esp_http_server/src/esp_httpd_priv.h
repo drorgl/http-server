@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,14 +9,28 @@
 #define _HTTPD_PRIV_H_
 
 #include <stdbool.h>
+
+#include "esp_http_server.h"
+
+#ifdef ESP_PLATFORM
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <netinet/in.h>
-#include <log.h>
 #include <esp_err.h>
 
-#include <esp_http_server.h>
-#include "osal.h"
+
+#include "port/esp32/osal.h"
+#else
+#include "port/linux/osal.h"
+#endif
+
+#include <log.h>
+
+#ifdef _WIN32
+#include "port/win/network.h"
+#else
+#include <sys/select.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +49,8 @@ extern "C" {
 #define PARSER_BLOCK_SIZE  128
 
 /* Formats a log string to prepend context function name */
-#define LOG_FMT(x)      "%s: " x, __func__
+// #define LOG_FMT(x)      "%s: " x, __func__
+#define LOG_FMT(x)      x
 
 /**
  * @brief Control message data structure for internal use. Sent to control socket.
@@ -84,6 +99,7 @@ struct sock_db {
     bool for_async_req;                     /*!< If true, the socket will not be LRU purged */
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     bool ws_handshake_done;                 /*!< True if it has done WebSocket handshake (if this socket is a valid WS) */
+    bool ws_handshake_in_progress;          /*!< True if WebSocket handshake is in progress */
     bool ws_close;                          /*!< Set to true to close the socket later (when WS Close frame received) */
     esp_err_t (*ws_handler)(httpd_req_t *r);   /*!< WebSocket handler, leave to null if it's not WebSocket */
     bool ws_control_frames;                         /*!< WebSocket flag indicating that control frames should be passed to user handlers */
@@ -581,10 +597,14 @@ esp_err_t httpd_sess_trigger_close_(httpd_handle_t handle, struct sock_db *sessi
  * @}
  */
 
+#ifdef ESP_PLATFORM
 #if CONFIG_HTTPD_SERVER_EVENT_POST_TIMEOUT == -1
 #define ESP_HTTP_SERVER_EVENT_POST_TIMEOUT portMAX_DELAY
 #else
 #define ESP_HTTP_SERVER_EVENT_POST_TIMEOUT pdMS_TO_TICKS(CONFIG_HTTPD_SERVER_EVENT_POST_TIMEOUT)
+#endif
+#else
+#define ESP_HTTP_SERVER_EVENT_POST_TIMEOUT CONFIG_HTTPD_SERVER_EVENT_POST_TIMEOUT
 #endif
 
 /**
@@ -592,8 +612,6 @@ esp_err_t httpd_sess_trigger_close_(httpd_handle_t handle, struct sock_db *sessi
  *
  */
 void esp_http_server_dispatch_event(int32_t event_id, const void* event_data, size_t event_data_size);
-
-esp_err_t httpd_crypto_sha1(const uint8_t *data, size_t data_len, uint8_t *hash);
 
 #ifdef __cplusplus
 }

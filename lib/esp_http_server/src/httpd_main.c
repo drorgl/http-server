@@ -1,24 +1,42 @@
 /*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2023 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/param.h>
+#include <stdint.h>
+#include "port/events.h"
+#include "esp_httpd_priv.h"
+#include <malloc.h>
 #include <errno.h>
-#include <log.h>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <netinet/tcp.h>
+#endif
+
+#include <errno.h>
+
+#ifdef ESP_PLATFORM
+#include <sys/param.h>
+
 #include <esp_err.h>
 #include <assert.h>
 #include <netinet/tcp.h>
 
 #include <esp_http_server.h>
-#include "esp_httpd_priv.h"
-#include "ctrl_sock.h"
+
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
 #include "freertos/semphr.h"
 #endif
+#endif
+
+#include <log.h>
 
 #if defined(CONFIG_LWIP_MAX_SOCKETS)
 #define HTTPD_MAX_SOCKETS CONFIG_LWIP_MAX_SOCKETS
@@ -26,6 +44,7 @@
 /* LwIP component is not included into the build, use a default value */
 #define HTTPD_MAX_SOCKETS 15
 #endif
+#include "util/ctrl_sock.h"
 
 static const int DEFAULT_KEEP_ALIVE_IDLE = 5;
 static const int DEFAULT_KEEP_ALIVE_INTERVAL= 5;
@@ -73,6 +92,19 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
     }
     LOGD(TAG, LOG_FMT("newfd = %d"), new_fd);
 
+#ifdef _WIN32
+    DWORD timeout_ms = hd->config.recv_wait_timeout * 1000;
+    if (setsockopt(new_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms)) < 0) {
+        LOGE(TAG, LOG_FMT("error in setsockopt SO_RCVTIMEO (%d)"), WSAGetLastError());
+        goto exit;
+    }
+
+    timeout_ms = hd->config.send_wait_timeout * 1000;
+    if (setsockopt(new_fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms)) < 0) {
+        LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), WSAGetLastError());
+        goto exit;
+    }
+#else
     struct timeval tv;
     /* Set recv timeout of this fd as per config */
     tv.tv_sec = hd->config.recv_wait_timeout;
@@ -89,6 +121,7 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
         LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), errno);
         goto exit;
     }
+#endif
 
     if (hd->config.keep_alive_enable) {
         int keep_alive_enable = 1;
@@ -97,11 +130,37 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
         int keep_alive_count = hd->config.keep_alive_count ? hd->config.keep_alive_count : DEFAULT_KEEP_ALIVE_COUNT;
         LOGD(TAG, "Enable TCP keep alive. idle: %d, interval: %d, count: %d", keep_alive_idle, keep_alive_interval, keep_alive_count);
 
-        if (setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive_enable, sizeof(keep_alive_enable)) < 0) {
+        if (setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char*)&keep_alive_enable, sizeof(keep_alive_enable)) < 0) {
             LOGE(TAG, LOG_FMT("error in setsockopt SO_KEEPALIVE (%d)"), errno);
             goto exit;
         }
-#ifndef __APPLE__
+
+#ifdef __APPLE__
+        if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPALIVE, &keep_alive_idle, sizeof(keep_alive_idle)) < 0) {
+                LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPALIVE (%d)"), errno);
+                goto exit;
+        }
+#elif _WIN32
+        struct tcp_keepalive ka;
+        DWORD dwBytes;
+
+        // Convert milliseconds (or whatever your keep_alive_vars are) to Windows milliseconds
+        // Note: The variables below should be in milliseconds for SIO_KEEPALIVE_VALS
+        // Assuming keep_alive_idle, keep_alive_interval are in seconds and need converting:
+        ka.onoff = 1; // Enable Keep-Alive
+        ka.keepalivetime = keep_alive_idle * 1000;         // Idle time (in milliseconds)
+        ka.keepaliveinterval = keep_alive_interval * 1000; // Interval time (in milliseconds)
+
+        if (WSAIoctl(new_fd, SIO_KEEPALIVE_VALS, &ka, sizeof(ka), 
+                    NULL, 0, &dwBytes, NULL, NULL) == SOCKET_ERROR) 
+        {
+            // LOGE uses errno, but Winsock uses WSAGetLastError().
+            // You'll need a wrapper to get the Windows error code.
+            // For simplicity here, use a placeholder error reporting:
+            LOGE(TAG, LOG_FMT("error in WSAIoctl SIO_KEEPALIVE_VALS (%d)"), WSAGetLastError());
+            goto exit;
+        }
+#else
         if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPIDLE, &keep_alive_idle, sizeof(keep_alive_idle)) < 0) {
             LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPIDLE (%d)"), errno);
             goto exit;
@@ -114,12 +173,7 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
             LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPCNT (%d)"), errno);
             goto exit;
         }
-#else // __APPLE__
-        if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPALIVE, &keep_alive_idle, sizeof(keep_alive_idle)) < 0) {
-            LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPALIVE (%d)"), errno);
-            goto exit;
-        }
-#endif // __APPLE__
+#endif
     }
     if (ESP_OK != httpd_sess_new(hd, new_fd)) {
         LOGE(TAG, LOG_FMT("session creation failed"));
@@ -134,6 +188,7 @@ exit:
     return ESP_FAIL;
 }
 
+
 esp_err_t httpd_queue_work(httpd_handle_t handle, httpd_work_fn_t work, void *arg)
 {
     if (handle == NULL || work == NULL) {
@@ -141,11 +196,11 @@ esp_err_t httpd_queue_work(httpd_handle_t handle, httpd_work_fn_t work, void *ar
     }
 
     struct httpd_data *hd = (struct httpd_data *) handle;
-    struct httpd_ctrl_data msg = {
-        .hc_msg = HTTPD_CTRL_WORK,
-        .hc_work = work,
-        .hc_work_arg = arg,
-    };
+    struct httpd_ctrl_data msg = {0};
+    memset(&msg, 0, sizeof(struct httpd_ctrl_data));
+        msg.hc_msg = HTTPD_CTRL_WORK;
+        msg.hc_work = work;
+        msg.hc_work_arg = arg;
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
     // Semaphore is acquired here and released after work function is executed.
     if (xSemaphoreTake(hd->ctrl_sock_semaphore, portMAX_DELAY) == pdTRUE) {
@@ -200,7 +255,7 @@ void *httpd_get_global_transport_ctx(httpd_handle_t handle)
 static void httpd_process_ctrl_msg(struct httpd_data *hd)
 {
     struct httpd_ctrl_data msg;
-    int ret = recv(hd->ctrl_fd, &msg, sizeof(msg), 0);
+    int ret = recv(hd->ctrl_fd, (char*)&msg, sizeof(msg), 0);
     if (ret <= 0) {
         LOGW(TAG, LOG_FMT("error in recv (%d)"), errno);
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
@@ -268,6 +323,7 @@ static esp_err_t httpd_server(struct httpd_data *hd)
 {
     fd_set read_set;
     FD_ZERO(&read_set);
+    struct timeval timeout = { .tv_sec = 0, .tv_usec = 100000 }; // 100 ms timeout
     if (hd->config.lru_purge_enable || httpd_is_sess_available(hd)) {
         /* Only listen for new connections if server has capacity to
          * handle more (or when LRU purge is enabled, in which case
@@ -283,11 +339,19 @@ static esp_err_t httpd_server(struct httpd_data *hd)
     maxfd = MAX(hd->ctrl_fd, tmp_max_fd);
 
     LOGD(TAG, LOG_FMT("doing select maxfd+1 = %d"), maxfd + 1);
-    int active_cnt = select(maxfd + 1, &read_set, NULL, NULL, NULL);
+    // int active_cnt = select(maxfd + 1, &read_set, NULL, NULL, NULL);
+    int active_cnt = select(maxfd + 1, &read_set, NULL, NULL, &timeout);
     if (active_cnt < 0) {
         LOGE(TAG, LOG_FMT("error in select (%d)"), errno);
         httpd_sess_delete_invalid(hd);
-        return ESP_OK;
+        // If select fails with EBADF, it's a critical error.
+        // Returning ESP_FAIL will cause the httpd_thread to exit.
+        if (errno == EBADF) {
+            // Invalidate listen_fd as well, as it could also be the source of EBADF
+            hd->listen_fd = -1;
+            return ESP_FAIL;
+        }
+        return ESP_OK; // For other non-critical select errors, continue.
     }
 
     /* Case0: Do we have a control message? */
@@ -296,6 +360,10 @@ static esp_err_t httpd_server(struct httpd_data *hd)
         httpd_process_ctrl_msg(hd);
         if (hd->hd_td.status == THREAD_STOPPING) {
             LOGD(TAG, LOG_FMT("stopping thread"));
+            // Invalidate ctrl_fd immediately to prevent further select errors
+            // during thread shutdown sequence.
+            cs_free_ctrl_sock(hd->ctrl_fd);
+            hd->ctrl_fd = -1;
             return ESP_FAIL;
         }
     }
@@ -320,13 +388,13 @@ static esp_err_t httpd_server(struct httpd_data *hd)
 }
 
 /* The main HTTPD thread */
-static void httpd_thread(void *arg)
+static void* httpd_thread(void *arg)
 {
     int ret;
     struct httpd_data *hd = (struct httpd_data *) arg;
     hd->hd_td.status = THREAD_RUNNING;
 
-    LOGD(TAG, LOG_FMT("web server started"));
+    LOGD(TAG, LOG_FMT("web server thread starting"));
     while (1) {
         ret = httpd_server(hd);
         if (ret != ESP_OK) {
@@ -336,10 +404,14 @@ static void httpd_thread(void *arg)
 
     LOGD(TAG, LOG_FMT("web server exiting"));
     close(hd->msg_fd);
-    cs_free_ctrl_sock(hd->ctrl_fd);
+    LOGD(TAG, LOG_FMT("free control socket"));
+    // cs_free_ctrl_sock(hd->ctrl_fd);
+    LOGD(TAG, LOG_FMT("close sessions"));
     httpd_sess_close_all(hd);
+    LOGD(TAG, LOG_FMT("close listen socket"));
     close(hd->listen_fd);
     hd->hd_td.status = THREAD_STOPPED;
+    LOGD(TAG, LOG_FMT("deleting thread"));
     httpd_os_thread_delete();
 }
 
@@ -373,7 +445,7 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
     /* Enable SO_REUSEADDR to allow binding to the same
      * address and port when restarting the server */
     int enable = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) < 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(enable)) < 0) {
         /* This will fail if CONFIG_LWIP_SO_REUSE is not enabled. But
          * it does not affect the normal working of the HTTP Server */
         LOGW(TAG, LOG_FMT("error in setsockopt SO_REUSEADDR (%d)"), errno);
@@ -381,9 +453,35 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
 
     int ret = bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     if (ret < 0) {
+        #ifdef _WIN32
+        LOGE(TAG, LOG_FMT("error in bind (%d) WSAGetLastError: %d"), errno, WSAGetLastError());
+        #else
         LOGE(TAG, LOG_FMT("error in bind (%d)"), errno);
+        #endif
         close(fd);
         return ESP_FAIL;
+    } else {
+        // If port was 0, getsockname will return the actual port bound
+        if (hd->config.server_port == 0) {
+            #if CONFIG_LWIP_IPV6
+            struct sockaddr_in6 bound_addr;
+            #else
+            struct sockaddr_in bound_addr;
+            #endif
+            socklen_t bound_addr_len = sizeof(bound_addr);
+            if (getsockname(fd, (struct sockaddr*)&bound_addr, &bound_addr_len) == 0) {
+                #if CONFIG_LWIP_IPV6
+                hd->config.server_port = ntohs(bound_addr.sin6_port);
+                #else
+                hd->config.server_port = ntohs(bound_addr.sin_port);
+                #endif
+                LOGD(TAG, LOG_FMT("Server bound to random port %d"), hd->config.server_port);
+            } else {
+                LOGE(TAG, LOG_FMT("error in getsockname (%d)"), errno);
+                close(fd);
+                return ESP_FAIL;
+            }
+        }
     }
 
     ret = listen(fd, hd->config.backlog_conn);
@@ -395,7 +493,7 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
 
     int ctrl_fd = cs_create_ctrl_sock(hd->config.ctrl_port);
     if (ctrl_fd < 0) {
-        LOGE(TAG, LOG_FMT("error in creating ctrl socket (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in creating ctrl socket (%d) for port %d"), errno, hd->config.ctrl_port);
         close(fd);
         return ESP_FAIL;
     }
@@ -418,6 +516,7 @@ static struct httpd_data *httpd_create(const httpd_config_t *config)
 {
     /* Allocate memory for httpd instance data */
     struct httpd_data *hd = calloc(1, sizeof(struct httpd_data));
+    memset(hd, 0, sizeof(struct httpd_data));
     if (!hd) {
         LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP server instance"));
         return NULL;

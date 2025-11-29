@@ -4,18 +4,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#ifdef ESP_PLATFORM
 
-#include <stdlib.h>
-#include <string.h>
 #include <sys/param.h>
-#include <log.h>
 #include <esp_err.h>
-#include <http_parser.h>
-#include <inttypes.h>
+
 
 #include <esp_http_server.h>
-#include "esp_httpd_priv.h"
 #include "osal.h"
+#endif
+
+#include <string.h>
+#include <stdlib.h>
+#include <log.h>
+#include <inttypes.h>
+#include "esp_httpd_priv.h"
+#include <http_parser.h>
+#include "port/events.h"
+
+#define strlcpy strncpy
 
 static const char *TAG = "httpd_parse";
 
@@ -79,11 +86,10 @@ static esp_err_t verify_url (http_parser *parser)
         return ESP_FAIL;
     }
 
-    /* Copy URI and append terminating null character. Note URI string pointed
+    /* Keep URI with terminating null character. Note URI string pointed
      * by 'at' is not NULL terminated, therefore use length provided by
      * parser while copying the URI to buffer */
-    memcpy((char *)r->uri, at, length);
-    ((char *)r->uri)[length] = '\0';
+    strlcpy((char *)r->uri, at, (length));// + 1)); //TODO (DROR): identify why it behaves differently in mingw
     LOGD(TAG, LOG_FMT("received URI = %s"), r->uri);
 
     /* Make sure version is HTTP/1.1 or HTTP/1.0 (legacy compliance purpose) */
@@ -96,10 +102,12 @@ static esp_err_t verify_url (http_parser *parser)
 
     /* Parse URL and keep result for later */
     http_parser_url_init(res);
-    if (http_parser_parse_url(r->uri, length,
-                              r->method == HTTP_CONNECT, res)) {
-        LOGW(TAG, LOG_FMT("http_parser_parse_url failed with errno = %d"),
-                              parser->http_errno);
+    LOGD(TAG, "strlen url %d\r\n", (int)strlen(r->uri));
+    int parse_result = http_parser_parse_url(r->uri, strlen(r->uri),
+                              r->method == HTTP_CONNECT, res);
+    if (parse_result) {
+        LOGW(TAG, LOG_FMT("http_parser_parse_url failed with errno = %d, %d"),
+                              parser->http_errno, parse_result);
         parser_data->error = HTTPD_400_BAD_REQUEST;
         return ESP_FAIL;
     }
@@ -497,7 +505,7 @@ static int read_block(httpd_req_t *req, http_parser *parser, size_t offset, size
     if (buf_len <= 0) {
         return 0;
     }
-    /* Calculate the offset of the current position from the start of the buffer,
+/* Calculate the offset of the current position from the start of the buffer,
      * as after reallocating the buffer, the base address of the buffer may change.
      */
     size_t at_offset = parser_data->last.at - raux->scratch;
@@ -706,6 +714,7 @@ static void init_req(httpd_req_t *r, httpd_config_t *config)
 static void init_req_aux(struct httpd_req_aux *ra, httpd_config_t *config)
 {
     ra->sd = 0;
+    // memset(ra->scratch, 0, sizeof(ra->scratch));
     ra->remaining_len = 0;
     ra->status = 0;
     ra->content_type = 0;
@@ -792,6 +801,9 @@ esp_err_t httpd_req_new(struct httpd_data *hd, struct sock_db *sd)
              sd->ws_handler != NULL ? "Yes" : "No",
              sd->ws_close ? "Yes" : "No");
     if (sd->ws_handshake_done && sd->ws_handler != NULL) {
+        if (sd->ws_handshake_in_progress) {
+            return ESP_OK;
+        }
         if (sd->ws_close == true) {
             /* WS was marked as close state, do not deal with this socket */
             LOGD(TAG, LOG_FMT("WS was marked close"));
@@ -890,7 +902,8 @@ esp_err_t httpd_query_key_value(const char *qry_str, const char *key, char *val,
         return ESP_ERR_INVALID_ARG;
     }
 
-    const char *qry_ptr = qry_str;
+    const char   *qry_ptr = qry_str;
+    const size_t  buf_len = val_size;
 
     while (strlen(qry_ptr)) {
         /* Search for the '=' character. Else, it would mean
@@ -924,18 +937,18 @@ esp_err_t httpd_query_key_value(const char *qry_str, const char *key, char *val,
             qry_ptr = val_ptr + strlen(val_ptr);
         }
 
-        /* Query value length does not include terminating null */
-        size_t val_len = qry_ptr - val_ptr;
+        /* Update value length, excluding the delimiter */
+        val_size = (qry_ptr - val_ptr);
 
         /* Copy value to the caller's buffer. */
-        size_t copy_len = MIN(val_len, val_size - 1);
+        strncpy(val, val_ptr, MIN(val_size, buf_len - 1));
+        val[MIN(val_size, buf_len - 1)] = '\0'; // Manually null-terminate
+
         /* If buffer length is smaller than needed, return truncation error */
-        if (copy_len < val_len) {
+        if (buf_len <= val_size) { // Check if buffer can hold value + null terminator
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }
-        memcpy(val, val_ptr, copy_len);
-        val[copy_len] = '\0';
-
+        
         return ESP_OK;
     }
     LOGD(TAG, LOG_FMT("key %s not found"), key);
@@ -989,17 +1002,15 @@ esp_err_t httpd_req_get_url_query_str(httpd_req_t *r, char *buf, size_t buf_len)
     if (res->field_set & (1 << UF_QUERY)) {
         const char *qry = r->uri + res->field_data[UF_QUERY].off;
 
-        /* Query data length does not include terminating null */
-        size_t data_len = res->field_data[UF_QUERY].len;
+        /* Minimum required buffer len for keeping
+         * null terminated query string */
+        size_t min_buf_len = res->field_data[UF_QUERY].len + 1;
 
-        /* Copy data to the caller's buffer. */
-        size_t copy_len = MIN(data_len, buf_len - 1);
-        if (copy_len < data_len) {
+        strlcpy(buf, qry, MIN(buf_len, min_buf_len));
+        if (buf_len < min_buf_len) {
+            buf[buf_len-1] = '\0';
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }
-        memcpy(buf, qry, copy_len);
-        buf[copy_len] = '\0';
-
         return ESP_OK;
     }
     return ESP_ERR_NOT_FOUND;
@@ -1074,6 +1085,7 @@ esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *r, const char *field, char *v
     struct httpd_req_aux *ra = r->aux;
     const char   *hdr_ptr = ra->scratch;         /*!< Request headers are kept in scratch buffer */
     unsigned     count    = ra->req_hdrs_count;  /*!< Count set during parsing  */
+    const size_t buf_len  = val_size;
 
     while (count--) {
         /* Search for the ':' character. Else, it would mean
@@ -1111,13 +1123,14 @@ esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *r, const char *field, char *v
             val_ptr++;
         }
 
-        /* Get the NULL terminated value and copy it to the caller's buffer.
-         * Note `strlcpy()` will always return the size of the source string
-         * including terminimating null.*/
-        size_t full_size = strlcpy(val, val_ptr, val_size);
+        /* Get the NULL terminated value and copy it to the caller's buffer. */
+        strlcpy(val, val_ptr, buf_len);
+
+        /* Update value length, including one byte for null */
+        val_size = strlen(val_ptr) + 1;
 
         /* If buffer length is smaller than needed, return truncation error */
-        if (val_size < full_size) {
+        if (buf_len < val_size) {
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }
         return ESP_OK;
@@ -1133,6 +1146,8 @@ esp_err_t static httpd_cookie_key_value(const char *cookie_str, const char *key,
     }
 
     const char *cookie_ptr = cookie_str;
+    const size_t buf_len = *val_size;
+    size_t _val_size = *val_size;
 
     while (strlen(cookie_ptr)) {
         /* Search for the '=' character. Else, it would mean
@@ -1157,30 +1172,28 @@ esp_err_t static httpd_cookie_key_value(const char *cookie_str, const char *key,
             continue;
         }
 
-        /* Locate start of next query */
-        cookie_ptr = strchr(++val_ptr, ';');
-        /* Or this could be the last query, in which
-         * case get to the end of query string */
-        if (!cookie_ptr) {
-            cookie_ptr = val_ptr + strlen(val_ptr);
+        /* Locate delimiter (semicolon) for next cookie */
+        const char *next_cookie = strchr(++val_ptr, ';');
+        /* Or this could be the last cookie, in which
+         * case get to the end of cookie string */
+        if (!next_cookie) {
+            next_cookie = val_ptr + strlen(val_ptr);
         }
 
-        /* Cookie value length does not include terminating null */
-        size_t val_len = cookie_ptr - val_ptr;
+        /* Calculate value length WITHOUT the semicolon delimiter */
+        _val_size = next_cookie - val_ptr;
 
-        /* Copy value to the caller's buffer. */
-        size_t copy_len = MIN(val_len, *val_size - 1);
-
-        /* Save actual Cookie value size (including terminating null) */
-        *val_size = val_len + 1;
+        /* Copy value without semicolon delimiter */
+        strlcpy(val, val_ptr, MIN(_val_size, buf_len));
 
         /* If buffer length is smaller than needed, return truncation error */
-        if (copy_len < val_len) {
+        if (buf_len < _val_size) {
+            val[buf_len-1] = '\0';
+            *val_size = _val_size;
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }
-        memcpy(val, val_ptr, copy_len);
-        val[copy_len] = '\0';
-
+        /* Save amount of bytes copied to caller's buffer */
+        *val_size = _val_size;
         return ESP_OK;
     }
     LOGD(TAG, LOG_FMT("cookie %s not found"), key);

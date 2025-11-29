@@ -1,18 +1,25 @@
 /*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2018-2024 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stdlib.h>
 
+#ifndef _WIN32
 #include <errno.h>
-#include <log.h>
-#include <esp_err.h>
+#include <sys/socket.h>
+#endif
 
-#include <esp_http_server.h>
-#include "esp_httpd_priv.h"
+#ifdef ESP_PLATFORM
+#include <esp_err.h>
 #include <netinet/tcp.h>
-#include "ctrl_sock.h"
+#endif
+
+#include "esp_httpd_priv.h"
+#include <esp_http_server.h>
+#include "util/ctrl_sock.h"
+#include <LOG.h>
 
 static const char *TAG = "httpd_txrx";
 
@@ -59,6 +66,15 @@ int httpd_send(httpd_req_t *r, const char *buf, size_t buf_len)
     struct httpd_req_aux *ra = r->aux;
     int ret = ra->sd->send_fn(ra->sd->handle, ra->sd->fd, buf, buf_len, 0);
     if (ret < 0) {
+        // log_write(4, TAG,  
+        //     "D (%u) %s: %s:%d [%s] %s: error in send_fn\033[0m\n", 
+        //     log_timestamp(), 
+        //     TAG, 
+        //     "H:\\LiluSoft\\Projects\\ESP32SecurityCamera\\POC6WebServer\\AsyncWebServer\\lib\\esp_http_server\\src\\httpd_txrx.c", 
+        //     62, 
+        //     __FUNCTION__
+        // );
+
         LOGD(TAG, LOG_FMT("error in send_fn"));
         return ret;
     }
@@ -117,7 +133,7 @@ int httpd_recv_with_opt(httpd_req_t *r, char *buf, size_t buf_len, httpd_recv_op
             return pending_len;
         }
     }
-
+    
     /* Receive data of remaining length */
     size_t recv_len = pending_len;
     do {
@@ -132,6 +148,10 @@ int httpd_recv_with_opt(httpd_req_t *r, char *buf, size_t buf_len, httpd_recv_op
                 * requested length, due to timeout, returns with read
                 * length, rather than error */
                 return pending_len;
+            } else if ((ret == HTTPD_SOCK_ERR_TIMEOUT) && (pending_len == 0)) {
+                /* If recv() timeout occurred and no pending data,
+                * return timeout error to prevent indefinite blocking */
+                return HTTPD_SOCK_ERR_TIMEOUT;
             }
             return ret;
         }
@@ -244,9 +264,9 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
     }
 
     struct httpd_req_aux *ra = r->aux;
-    const char *httpd_hdr_str = "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n";
+    const char *httpd_hdr_str = "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zd\r\n";
     const char *colon_separator = ": ";
-    const char *cr_lf_seperator = "\r\n";
+    const char *cr_lf_separator = "\r\n";
 
     if (buf_len == HTTPD_RESP_USE_STRLEN) {
         buf_len = strlen(buf);
@@ -293,13 +313,13 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
             return ESP_ERR_HTTPD_RESP_SEND;
         }
         /* Send CR + LF */
-        if (httpd_send_all(r, cr_lf_seperator, strlen(cr_lf_seperator)) != ESP_OK) {
+        if (httpd_send_all(r, cr_lf_separator, strlen(cr_lf_separator)) != ESP_OK) {
             return ESP_ERR_HTTPD_RESP_SEND;
         }
     }
 
     /* End header section */
-    if (httpd_send_all(r, cr_lf_seperator, strlen(cr_lf_seperator)) != ESP_OK) {
+    if (httpd_send_all(r, cr_lf_separator, strlen(cr_lf_separator)) != ESP_OK) {
         return ESP_ERR_HTTPD_RESP_SEND;
     }
     struct httpd_data *hd = (struct httpd_data *) r->handle;
@@ -339,12 +359,12 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
     struct httpd_data *hd = (struct httpd_data *) r->handle;
     const char *httpd_chunked_hdr_str = "HTTP/1.1 %s\r\nContent-Type: %s\r\nTransfer-Encoding: chunked\r\n";
     const char *colon_separator = ": ";
-    const char *cr_lf_seperator = "\r\n";
+    const char *cr_lf_separator = "\r\n";
 
     /* Request headers are no longer available */
     ra->req_hdrs_count = 0;
 
-    if (!ra->first_chunk_sent) {
+   if (!ra->first_chunk_sent) {
         /* Calculate the size of the headers. +1 for the null terminator */
         size_t required_size = snprintf(NULL, 0, httpd_chunked_hdr_str, ra->status, ra->content_type) + 1;
         if (required_size > ra->max_req_hdr_len) {
@@ -383,13 +403,13 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
                 return ESP_ERR_HTTPD_RESP_SEND;
             }
             /* Send CR + LF */
-            if (httpd_send_all(r, cr_lf_seperator, strlen(cr_lf_seperator)) != ESP_OK) {
+            if (httpd_send_all(r, cr_lf_separator, strlen(cr_lf_separator)) != ESP_OK) {
                 return ESP_ERR_HTTPD_RESP_SEND;
             }
         }
 
         /* End header section */
-        if (httpd_send_all(r, cr_lf_seperator, strlen(cr_lf_seperator)) != ESP_OK) {
+        if (httpd_send_all(r, cr_lf_separator, strlen(cr_lf_separator)) != ESP_OK) {
             return ESP_ERR_HTTPD_RESP_SEND;
         }
         ra->first_chunk_sent = true;
@@ -621,7 +641,7 @@ int httpd_req_recv(httpd_req_t *r, char *buf, size_t buf_len)
 
     int ret = httpd_recv(r, buf, buf_len);
     if (ret < 0) {
-        LOGD(TAG, LOG_FMT("error in httpd_recv"));
+        LOGD(TAG, LOG_FMT("error in httpd_recv (%d)"), ret);
         return ret;
     }
     ra->remaining_len -= ret;
@@ -748,6 +768,26 @@ int httpd_req_to_sockfd(httpd_req_t *r)
 static int httpd_sock_err(const char *ctx, int sockfd)
 {
     int errval;
+#ifdef _WIN32
+    int err = WSAGetLastError();
+    LOGW(TAG, LOG_FMT("error in %s : %d"), ctx, err);
+
+    switch (err) {
+    case WSAEWOULDBLOCK:
+    case WSAEINTR:
+    case WSAETIMEDOUT:
+        errval = HTTPD_SOCK_ERR_TIMEOUT;
+        break;
+    case WSAEINVAL:
+    case WSAEBADF:
+    case WSAEFAULT:
+    case WSAENOTSOCK:
+        errval = HTTPD_SOCK_ERR_INVALID;
+        break;
+    default:
+        errval = HTTPD_SOCK_ERR_FAIL;
+    }
+#else
     LOGW(TAG, LOG_FMT("error in %s : %d"), ctx, errno);
 
     switch (errno) {
@@ -764,6 +804,7 @@ static int httpd_sock_err(const char *ctx, int sockfd)
     default:
         errval = HTTPD_SOCK_ERR_FAIL;
     }
+#endif
     return errval;
 }
 
