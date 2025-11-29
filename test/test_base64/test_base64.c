@@ -115,14 +115,14 @@ void test_base64_decoded_length_two_padding(void) {
 // Test functions for base64_decode
 void test_base64_decode_empty_string(void) {
     const char input[] = "";
-    unsigned char output[10];
+    unsigned char output[10] = {0};
     size_t decoded_len = base64_decode(input, 0, output, sizeof(output));
     TEST_ASSERT_EQUAL(0, decoded_len);
 }
 
 void test_base64_decode_single_char_padding(void) {
     const char input[] = "QQ==";
-    unsigned char output[10];
+    unsigned char output[10] = {0};
     size_t decoded_len = base64_decode(input, strlen(input), output, sizeof(output));
     TEST_ASSERT_EQUAL(1, decoded_len);
     TEST_ASSERT_EQUAL_STRING("A", (char*)output);
@@ -130,7 +130,7 @@ void test_base64_decode_single_char_padding(void) {
 
 void test_base64_decode_two_chars_padding(void) {
     const char input[] = "QUI=";
-    unsigned char output[10];
+    unsigned char output[10] = {0};
     size_t decoded_len = base64_decode(input, strlen(input), output, sizeof(output));
     TEST_ASSERT_EQUAL(2, decoded_len);
     TEST_ASSERT_EQUAL_STRING("AB", (char*)output);
@@ -138,7 +138,7 @@ void test_base64_decode_two_chars_padding(void) {
 
 void test_base64_decode_three_chars_no_padding(void) {
     const char input[] = "QUJD";
-    unsigned char output[10];
+    unsigned char output[10] = {0};
     size_t decoded_len = base64_decode(input, strlen(input), output, sizeof(output));
     TEST_ASSERT_EQUAL(3, decoded_len);
     TEST_ASSERT_EQUAL_STRING("ABC", (char*)output);
@@ -157,14 +157,14 @@ void test_base64_decode_long_string(void) {
 
 void test_base64_decode_invalid_length(void) {
     const char input[] = "ABC"; // Length 3, not multiple of 4
-    unsigned char output[10];
+    unsigned char output[10] = {0};
     size_t decoded_len = base64_decode(input, strlen(input), output, sizeof(output));
     TEST_ASSERT_EQUAL(0, decoded_len);
 }
 
 void test_base64_decode_invalid_char(void) {
     const char input[] = "A!@#"; // Invalid characters
-    unsigned char output[10];
+    unsigned char output[10] = {0};
     size_t decoded_len = base64_decode(input, strlen(input), output, sizeof(output));
     TEST_ASSERT_EQUAL(0, decoded_len);
 }
@@ -279,6 +279,12 @@ int main(void) {
 
     return UNITY_END();
 }
+
+void app_main(void)
+{
+    main();
+}
+
 
 #ifdef __cplusplus
 }
