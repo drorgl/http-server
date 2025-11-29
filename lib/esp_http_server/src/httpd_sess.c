@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <stdlib.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_err.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -98,7 +98,7 @@ static int enum_function(struct sock_db *session, void *context)
     // Delete invalid session
     case HTTPD_TASK_DELETE_INVALID:
         if (!fd_is_valid(session->fd)) {
-            ESP_LOGW(TAG, LOG_FMT("Closing invalid socket %d"), session->fd);
+            LOGW(TAG, LOG_FMT("Closing invalid socket %d"), session->fd);
             httpd_sess_delete(ctx->hd, session);
         }
         break;
@@ -119,7 +119,7 @@ static int enum_function(struct sock_db *session, void *context)
         break;
     case HTTPD_TASK_CLOSE:
         if (session->fd != -1) {
-            ESP_LOGD(TAG, LOG_FMT("cleaning up socket %d"), session->fd);
+            LOGD(TAG, LOG_FMT("cleaning up socket %d"), session->fd);
             httpd_sess_delete(ctx->hd, session);
         }
         break;
@@ -141,7 +141,7 @@ static void httpd_sess_close(void *arg)
     }
 
     if (!sock_db->lru_counter && !sock_db->lru_socket) {
-        ESP_LOGD(TAG, "Skipping session close for %d as it seems to be a race condition", sock_db->fd);
+        LOGD(TAG, "Skipping session close for %d as it seems to be a race condition", sock_db->fd);
         return;
     }
     sock_db->lru_socket = false;
@@ -189,16 +189,16 @@ struct sock_db *httpd_sess_get(struct httpd_data *hd, int sockfd)
 
 esp_err_t httpd_sess_new(struct httpd_data *hd, int newfd)
 {
-    ESP_LOGD(TAG, LOG_FMT("fd = %d"), newfd);
+    LOGD(TAG, LOG_FMT("fd = %d"), newfd);
 
     if (httpd_sess_get(hd, newfd)) {
-        ESP_LOGE(TAG, LOG_FMT("session already exists with fd = %d"), newfd);
+        LOGE(TAG, LOG_FMT("session already exists with fd = %d"), newfd);
         return ESP_FAIL;
     }
 
     struct sock_db *session = httpd_sess_get_free(hd);
     if (!session) {
-        ESP_LOGD(TAG, LOG_FMT("unable to launch session for fd = %d"), newfd);
+        LOGD(TAG, LOG_FMT("unable to launch session for fd = %d"), newfd);
         return ESP_FAIL;
     }
 
@@ -218,13 +218,13 @@ esp_err_t httpd_sess_new(struct httpd_data *hd, int newfd)
         esp_err_t ret = hd->config.open_fn(hd, session->fd);
         if (ret != ESP_OK) {
             httpd_sess_delete(hd, session);
-            ESP_LOGD(TAG, LOG_FMT("open_fn failed for fd = %d"), newfd);
+            LOGD(TAG, LOG_FMT("open_fn failed for fd = %d"), newfd);
             return ret;
         }
     }
 
 
-    ESP_LOGD(TAG, LOG_FMT("active sockets: %d"), hd->hd_sd_active_count);
+    LOGD(TAG, LOG_FMT("active sockets: %d"), hd->hd_sd_active_count);
     return ESP_OK;
 }
 
@@ -359,14 +359,14 @@ void httpd_sess_delete(struct httpd_data *hd, struct sock_db *session)
         return;
     }
 
-    ESP_LOGD(TAG, LOG_FMT("fd = %d"), session->fd);
+    LOGD(TAG, LOG_FMT("fd = %d"), session->fd);
     if (hd->config.enable_so_linger) {
         struct linger so_linger = {
             .l_onoff = true,
             .l_linger = hd->config.linger_timeout,
         };
         if (setsockopt(session->fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof(struct linger)) < 0) {
-            ESP_LOGW(TAG, LOG_FMT("error enabling SO_LINGER (%d)"), errno);
+            LOGW(TAG, LOG_FMT("error enabling SO_LINGER (%d)"), errno);
         }
     }
 
@@ -387,7 +387,7 @@ void httpd_sess_delete(struct httpd_data *hd, struct sock_db *session)
 
     // decrement number of sessions
     hd->hd_sd_active_count--;
-    ESP_LOGD(TAG, LOG_FMT("active sockets: %d"), hd->hd_sd_active_count);
+    LOGD(TAG, LOG_FMT("active sockets: %d"), hd->hd_sd_active_count);
     if (!hd->hd_sd_active_count) {
         hd->lru_counter = 0;
     }
@@ -426,15 +426,15 @@ esp_err_t httpd_sess_process(struct httpd_data *hd, struct sock_db *session)
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, LOG_FMT("httpd_req_new"));
+    LOGD(TAG, LOG_FMT("httpd_req_new"));
     if (httpd_req_new(hd, session) != ESP_OK) {
         return ESP_FAIL;
     }
-    ESP_LOGD(TAG, LOG_FMT("httpd_req_delete"));
+    LOGD(TAG, LOG_FMT("httpd_req_delete"));
     if (httpd_req_delete(hd) != ESP_OK) {
         return ESP_FAIL;
     }
-    ESP_LOGD(TAG, LOG_FMT("success"));
+    LOGD(TAG, LOG_FMT("success"));
     session->lru_counter = ++hd->lru_counter;
     return ESP_OK;
 }
@@ -470,7 +470,7 @@ esp_err_t httpd_sess_close_lru(struct httpd_data *hd)
     if (!context.session) {
         return ESP_OK;
     }
-    ESP_LOGD(TAG, LOG_FMT("Closing session with fd %d"), context.session->fd);
+    LOGD(TAG, LOG_FMT("Closing session with fd %d"), context.session->fd);
     context.session->lru_socket = true;
     return httpd_sess_trigger_close_(hd, context.session);
 }

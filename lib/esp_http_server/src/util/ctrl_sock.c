@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "sdkconfig.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "ctrl_sock.h"
 
 #if CONFIG_IDF_TARGET_LINUX
@@ -30,7 +30,7 @@
 int cs_create_ctrl_sock(int port)
 {
 #if !LOOPBACK_ENABLED
-    ESP_LOGE("esp_http_server", "Please enable LWIP_NETIF_LOOPBACK for %s API", __func__);
+    LOGE("esp_http_server", "Please enable LWIP_NETIF_LOOPBACK for %s API", __func__);
     return -1;
 #endif
 

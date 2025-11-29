@@ -6,7 +6,7 @@
 
 
 #include <errno.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_err.h>
 
 #include <esp_http_server.h>
@@ -59,7 +59,7 @@ int httpd_send(httpd_req_t *r, const char *buf, size_t buf_len)
     struct httpd_req_aux *ra = r->aux;
     int ret = ra->sd->send_fn(ra->sd->handle, ra->sd->fd, buf, buf_len, 0);
     if (ret < 0) {
-        ESP_LOGD(TAG, LOG_FMT("error in send_fn"));
+        LOGD(TAG, LOG_FMT("error in send_fn"));
         return ret;
     }
     return ret;
@@ -73,10 +73,10 @@ static esp_err_t httpd_send_all(httpd_req_t *r, const char *buf, size_t buf_len)
     while (buf_len > 0) {
         ret = ra->sd->send_fn(ra->sd->handle, ra->sd->fd, buf, buf_len, 0);
         if (ret < 0) {
-            ESP_LOGD(TAG, LOG_FMT("error in send_fn"));
+            LOGD(TAG, LOG_FMT("error in send_fn"));
             return ESP_FAIL;
         }
-        ESP_LOGD(TAG, LOG_FMT("sent = %d"), ret);
+        LOGD(TAG, LOG_FMT("sent = %d"), ret);
         buf     += ret;
         buf_len -= ret;
     }
@@ -98,14 +98,14 @@ static size_t httpd_recv_pending(httpd_req_t *r, char *buf, size_t buf_len)
 
 int httpd_recv_with_opt(httpd_req_t *r, char *buf, size_t buf_len, httpd_recv_opt_t opt)
 {
-    ESP_LOGD(TAG, LOG_FMT("requested length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(buf_len));
+    LOGD(TAG, LOG_FMT("requested length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(buf_len));
 
     size_t pending_len = 0;
     struct httpd_req_aux *ra = r->aux;
 
     /* First fetch pending data from local buffer */
     if (ra->sd->pending_len > 0) {
-        ESP_LOGD(TAG, LOG_FMT("pending length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->sd->pending_len));
+        LOGD(TAG, LOG_FMT("pending length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->sd->pending_len));
         pending_len = httpd_recv_pending(r, buf, buf_len);
         buf     += pending_len;
         buf_len -= pending_len;
@@ -123,7 +123,7 @@ int httpd_recv_with_opt(httpd_req_t *r, char *buf, size_t buf_len, httpd_recv_op
     do {
         int ret = ra->sd->recv_fn(ra->sd->handle, ra->sd->fd, buf, buf_len, 0);
         if (ret < 0) {
-            ESP_LOGD(TAG, LOG_FMT("error in recv_fn"));
+            LOGD(TAG, LOG_FMT("error in recv_fn"));
             if ((ret == HTTPD_SOCK_ERR_TIMEOUT) && (pending_len != 0)) {
                 /* If recv() timeout occurred, but pending data is
                 * present, return length of pending data.
@@ -141,7 +141,7 @@ int httpd_recv_with_opt(httpd_req_t *r, char *buf, size_t buf_len, httpd_recv_op
         buf_len  -= ret;
     } while (buf_len > 0 && opt == HTTPD_RECV_OPT_BLOCKING);
 
-    ESP_LOGD(TAG, LOG_FMT("received length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(recv_len));
+    LOGD(TAG, LOG_FMT("received length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(recv_len));
     return recv_len;
 }
 
@@ -160,7 +160,7 @@ size_t httpd_unrecv(struct httpd_req *r, const char *buf, size_t buf_len)
      * such that it is right aligned inside the buffer */
     size_t offset = sizeof(ra->sd->pending_data) - ra->sd->pending_len;
     memcpy(ra->sd->pending_data + offset, buf, ra->sd->pending_len);
-    ESP_LOGD(TAG, LOG_FMT("length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->sd->pending_len));
+    LOGD(TAG, LOG_FMT("length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->sd->pending_len));
     return ra->sd->pending_len;
 }
 
@@ -191,7 +191,7 @@ esp_err_t httpd_resp_set_hdr(httpd_req_t *r, const char *field, const char *valu
     ra->resp_hdrs[ra->resp_hdrs_count].value = value;
     ra->resp_hdrs_count++;
 
-    ESP_LOGD(TAG, LOG_FMT("new header = %s: %s"), field, value);
+    LOGD(TAG, LOG_FMT("new header = %s: %s"), field, value);
     return ESP_OK;
 }
 
@@ -262,7 +262,7 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
     }
     char *res_buf = malloc(required_size); /* Temporary buffer to store the headers */
     if (res_buf == NULL) {
-        ESP_LOGE(TAG, "Unable to allocate httpd send buffer");
+        LOGE(TAG, "Unable to allocate httpd send buffer");
         return ESP_ERR_HTTPD_ALLOC_MEM;
     }
 
@@ -271,7 +271,7 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
         free(res_buf);
         return ESP_ERR_HTTPD_RESP_HDR;
     }
-    ESP_LOGD(TAG, "httpd send buffer size = %d", strlen(res_buf));
+    LOGD(TAG, "httpd send buffer size = %d", strlen(res_buf));
     ret = httpd_send_all(r, res_buf, strlen(res_buf));
     free(res_buf);
     if (ret != ESP_OK) {
@@ -352,7 +352,7 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
         }
         char *res_buf = malloc(required_size); /* Temporary buffer to store the headers */
         if (res_buf == NULL) {
-            ESP_LOGE(TAG, "Unable to allocate httpd send chunk buffer");
+            LOGE(TAG, "Unable to allocate httpd send chunk buffer");
             return ESP_ERR_HTTPD_ALLOC_MEM;
         }
         esp_err_t ret = snprintf(res_buf, required_size, httpd_chunked_hdr_str, ra->status, ra->content_type);
@@ -360,7 +360,7 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
             free(res_buf);
             return ESP_ERR_HTTPD_RESP_HDR;
         }
-        ESP_LOGD(TAG, "httpd send chunk buffer size = %d", strlen(res_buf));
+        LOGD(TAG, "httpd send chunk buffer size = %d", strlen(res_buf));
         /* Size of essential headers is limited by scratch buffer size */
         ret = httpd_send_all(r, res_buf, strlen(res_buf));
         free(res_buf);
@@ -485,7 +485,7 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
 
     /* If user has provided custom message, override default message */
     msg = usr_msg ? usr_msg : msg;
-    ESP_LOGW(TAG, LOG_FMT("%s - %s"), status, msg);
+    LOGW(TAG, LOG_FMT("%s - %s"), status, msg);
 
     /* Set error code in HTTP response */
     httpd_resp_set_status(req, status);
@@ -499,7 +499,7 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
     int nodelay = 1;
     if (setsockopt(ra->sd->fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
         /* If failed to turn on TCP_NODELAY, throw warning and continue */
-        ESP_LOGW(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
+        LOGW(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
         nodelay = 0;
     }
 #endif
@@ -514,7 +514,7 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
         if (setsockopt(ra->sd->fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
             /* If failed to turn off TCP_NODELAY, throw error and
              * return failure to signal for socket closure */
-            ESP_LOGE(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
+            LOGE(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
             return ESP_ERR_INVALID_STATE;
         }
     }
@@ -526,7 +526,7 @@ esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const ch
 
 esp_err_t httpd_resp_send_custom_err(httpd_req_t *req, const char *status, const char *msg)
 {
-    ESP_LOGW(TAG, LOG_FMT("%s - %s"), status, msg);
+    LOGW(TAG, LOG_FMT("%s - %s"), status, msg);
 
     /* Set error code in HTTP response */
     httpd_resp_set_status(req, status);
@@ -540,7 +540,7 @@ esp_err_t httpd_resp_send_custom_err(httpd_req_t *req, const char *status, const
     int nodelay = 1;
     if (setsockopt(ra->sd->fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
         /* If failed to turn on TCP_NODELAY, throw warning and continue */
-        ESP_LOGW(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
+        LOGW(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
         nodelay = 0;
     }
 #endif
@@ -555,7 +555,7 @@ esp_err_t httpd_resp_send_custom_err(httpd_req_t *req, const char *status, const
         if (setsockopt(ra->sd->fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)) < 0) {
             /* If failed to turn off TCP_NODELAY, throw error and
              * return failure to signal for socket closure */
-            ESP_LOGE(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
+            LOGE(TAG, LOG_FMT("error calling setsockopt : %d"), errno);
             return ESP_ERR_INVALID_STATE;
         }
     }
@@ -605,12 +605,12 @@ int httpd_req_recv(httpd_req_t *r, char *buf, size_t buf_len)
     }
 
     if (!httpd_valid_req(r)) {
-        ESP_LOGW(TAG, LOG_FMT("invalid request"));
+        LOGW(TAG, LOG_FMT("invalid request"));
         return HTTPD_SOCK_ERR_INVALID;
     }
 
     struct httpd_req_aux *ra = r->aux;
-    ESP_LOGD(TAG, LOG_FMT("remaining length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->remaining_len));
+    LOGD(TAG, LOG_FMT("remaining length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->remaining_len));
 
     if (buf_len > ra->remaining_len) {
         buf_len = ra->remaining_len;
@@ -621,11 +621,11 @@ int httpd_req_recv(httpd_req_t *r, char *buf, size_t buf_len)
 
     int ret = httpd_recv(r, buf, buf_len);
     if (ret < 0) {
-        ESP_LOGD(TAG, LOG_FMT("error in httpd_recv"));
+        LOGD(TAG, LOG_FMT("error in httpd_recv"));
         return ret;
     }
     ra->remaining_len -= ret;
-    ESP_LOGD(TAG, LOG_FMT("received length = %d"), ret);
+    LOGD(TAG, LOG_FMT("received length = %d"), ret);
     struct httpd_data *hd = (struct httpd_data *) r->handle;
     hd->http_server_state = HTTP_SERVER_EVENT_ON_DATA;
     esp_http_server_event_data evt_data = {
@@ -722,11 +722,11 @@ esp_err_t httpd_req_async_handler_complete(httpd_req_t *r)
     struct httpd_ctrl_data msg = {.hc_msg = HTTPD_CTRL_MAX};
     int ret = cs_send_to_ctrl_sock(msg_fd, port, &msg, sizeof(msg));
     if (ret < 0) {
-        ESP_LOGW(TAG, LOG_FMT("failed to send socket notification"));
+        LOGW(TAG, LOG_FMT("failed to send socket notification"));
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, LOG_FMT("socket notification sent"));
+    LOGD(TAG, LOG_FMT("socket notification sent"));
     return ESP_OK;
 }
 
@@ -737,7 +737,7 @@ int httpd_req_to_sockfd(httpd_req_t *r)
     }
 
     if (!httpd_valid_req(r)) {
-        ESP_LOGW(TAG, LOG_FMT("invalid request"));
+        LOGW(TAG, LOG_FMT("invalid request"));
         return -1;
     }
 
@@ -748,7 +748,7 @@ int httpd_req_to_sockfd(httpd_req_t *r)
 static int httpd_sock_err(const char *ctx, int sockfd)
 {
     int errval;
-    ESP_LOGW(TAG, LOG_FMT("error in %s : %d"), ctx, errno);
+    LOGW(TAG, LOG_FMT("error in %s : %d"), ctx, errno);
 
     switch (errno) {
     case EAGAIN:

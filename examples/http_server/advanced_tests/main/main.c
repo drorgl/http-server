@@ -9,7 +9,7 @@
 
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "esp_log.h"
+#include "log.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
@@ -25,7 +25,7 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
-        ESP_LOGI(TAG, "Stopping webserver");
+        LOGI(TAG, "Stopping webserver");
         stop_tests(*server);
         *server = NULL;
     }
@@ -36,7 +36,7 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server == NULL) {
-        ESP_LOGI(TAG, "Starting webserver");
+        LOGI(TAG, "Starting webserver");
         *server = start_tests();
     }
 }

@@ -23,7 +23,7 @@
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -112,21 +112,21 @@ static void https_get_request(esp_tls_cfg_t cfg, const char *WEB_SERVER_URL, con
 
     esp_tls_t *tls = esp_tls_init();
     if (!tls) {
-        ESP_LOGE(TAG, "Failed to allocate esp_tls handle!");
+        LOGE(TAG, "Failed to allocate esp_tls handle!");
         goto exit;
     }
 
     if (esp_tls_conn_http_new_sync(WEB_SERVER_URL, &cfg, tls) == 1) {
-        ESP_LOGI(TAG, "Connection established...");
+        LOGI(TAG, "Connection established...");
     } else {
-        ESP_LOGE(TAG, "Connection failed...");
+        LOGE(TAG, "Connection failed...");
         int esp_tls_code = 0, esp_tls_flags = 0;
         esp_tls_error_handle_t tls_e = NULL;
         esp_tls_get_error_handle(tls, &tls_e);
         /* Try to get TLS stack level error and certificate failure flags, if any */
         ret = esp_tls_get_and_clear_last_error(tls_e, &esp_tls_code, &esp_tls_flags);
         if (ret == ESP_OK) {
-            ESP_LOGE(TAG, "TLS error = -0x%x, TLS flags = -0x%x", esp_tls_code, esp_tls_flags);
+            LOGE(TAG, "TLS error = -0x%x, TLS flags = -0x%x", esp_tls_code, esp_tls_flags);
         }
         goto cleanup;
     }
@@ -137,15 +137,15 @@ static void https_get_request(esp_tls_cfg_t cfg, const char *WEB_SERVER_URL, con
                                  REQUEST + written_bytes,
                                  strlen(REQUEST) - written_bytes);
         if (ret >= 0) {
-            ESP_LOGI(TAG, "%d bytes written", ret);
+            LOGI(TAG, "%d bytes written", ret);
             written_bytes += ret;
         } else if (ret != ESP_TLS_ERR_SSL_WANT_READ  && ret != ESP_TLS_ERR_SSL_WANT_WRITE) {
-            ESP_LOGE(TAG, "esp_tls_conn_write  returned: [0x%02X](%s)", ret, esp_err_to_name(ret));
+            LOGE(TAG, "esp_tls_conn_write  returned: [0x%02X](%s)", ret, esp_err_to_name(ret));
             goto cleanup;
         }
     } while (written_bytes < strlen(REQUEST));
 
-    ESP_LOGI(TAG, "Reading HTTP response...");
+    LOGI(TAG, "Reading HTTP response...");
     do {
         len = sizeof(buf) - 1;
         memset(buf, 0x00, sizeof(buf));
@@ -154,15 +154,15 @@ static void https_get_request(esp_tls_cfg_t cfg, const char *WEB_SERVER_URL, con
         if (ret == ESP_TLS_ERR_SSL_WANT_WRITE  || ret == ESP_TLS_ERR_SSL_WANT_READ) {
             continue;
         } else if (ret < 0) {
-            ESP_LOGE(TAG, "esp_tls_conn_read  returned [-0x%02X](%s)", -ret, esp_err_to_name(ret));
+            LOGE(TAG, "esp_tls_conn_read  returned [-0x%02X](%s)", -ret, esp_err_to_name(ret));
             break;
         } else if (ret == 0) {
-            ESP_LOGI(TAG, "connection closed");
+            LOGI(TAG, "connection closed");
             break;
         }
 
         len = ret;
-        ESP_LOGD(TAG, "%d bytes read", len);
+        LOGD(TAG, "%d bytes read", len);
         /* Print response directly to stdout as it is read */
         for (int i = 0; i < len; i++) {
             putchar(buf[i]);
@@ -182,7 +182,7 @@ cleanup:
     esp_tls_conn_destroy(tls);
 exit:
     for (int countdown = 10; countdown >= 0; countdown--) {
-        ESP_LOGI(TAG, "%d...", countdown);
+        LOGI(TAG, "%d...", countdown);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
@@ -190,7 +190,7 @@ exit:
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE && CONFIG_EXAMPLE_USING_ESP_TLS_MBEDTLS
 static void https_get_request_using_crt_bundle(void)
 {
-    ESP_LOGI(TAG, "https_request using crt bundle");
+    LOGI(TAG, "https_request using crt bundle");
     esp_tls_cfg_t cfg = {
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
@@ -200,7 +200,7 @@ static void https_get_request_using_crt_bundle(void)
 
 static void https_get_request_using_cacert_buf(void)
 {
-    ESP_LOGI(TAG, "https_request using cacert_buf");
+    LOGI(TAG, "https_request using cacert_buf");
     esp_tls_cfg_t cfg = {
         .cacert_buf = (const unsigned char *) server_root_cert_pem_start,
         .cacert_bytes = server_root_cert_pem_end - server_root_cert_pem_start,
@@ -212,7 +212,7 @@ static void https_get_request_using_specified_ciphersuites(void)
 {
 #if CONFIG_EXAMPLE_USING_ESP_TLS_MBEDTLS
 
-    ESP_LOGI(TAG, "https_request using server supported ciphersuites");
+    LOGI(TAG, "https_request using server supported ciphersuites");
     esp_tls_cfg_t cfg = {
         .cacert_buf = (const unsigned char *) server_root_cert_pem_start,
         .cacert_bytes = server_root_cert_pem_end - server_root_cert_pem_start,
@@ -221,7 +221,7 @@ static void https_get_request_using_specified_ciphersuites(void)
 
     https_get_request(cfg, WEB_URL, HOWSMYSSL_REQUEST);
 
-    ESP_LOGI(TAG, "https_request using server unsupported ciphersuites");
+    LOGI(TAG, "https_request using server unsupported ciphersuites");
 
     cfg.ciphersuites_list = server_unsupported_ciphersuites;
 
@@ -232,10 +232,10 @@ static void https_get_request_using_specified_ciphersuites(void)
 static void https_get_request_using_global_ca_store(void)
 {
     esp_err_t esp_ret = ESP_FAIL;
-    ESP_LOGI(TAG, "https_request using global ca_store");
+    LOGI(TAG, "https_request using global ca_store");
     esp_ret = esp_tls_set_global_ca_store(server_root_cert_pem_start, server_root_cert_pem_end - server_root_cert_pem_start);
     if (esp_ret != ESP_OK) {
-        ESP_LOGE(TAG, "Error in setting the global ca store: [%02X] (%s),could not complete the https_request using global_ca_store", esp_ret, esp_err_to_name(esp_ret));
+        LOGE(TAG, "Error in setting the global ca store: [%02X] (%s),could not complete the https_request using global_ca_store", esp_ret, esp_err_to_name(esp_ret));
         return;
     }
     esp_tls_cfg_t cfg = {
@@ -248,7 +248,7 @@ static void https_get_request_using_global_ca_store(void)
 #ifdef CONFIG_EXAMPLE_CLIENT_SESSION_TICKETS
 static void https_get_request_to_local_server(const char* url)
 {
-    ESP_LOGI(TAG, "https_request to local server");
+    LOGI(TAG, "https_request to local server");
     esp_tls_cfg_t cfg = {
         .cacert_buf = (const unsigned char *) local_server_cert_pem_start,
         .cacert_bytes = local_server_cert_pem_end - local_server_cert_pem_start,
@@ -260,7 +260,7 @@ static void https_get_request_to_local_server(const char* url)
 
 static void https_get_request_using_already_saved_session(const char *url)
 {
-    ESP_LOGI(TAG, "https_request using saved client session");
+    LOGI(TAG, "https_request using saved client session");
     esp_tls_cfg_t cfg = {
         .client_session = tls_client_session,
         .cacert_buf = (const unsigned char *) local_server_cert_pem_start,
@@ -276,7 +276,7 @@ static void https_get_request_using_already_saved_session(const char *url)
 
 static void https_request_task(void *pvparameters)
 {
-    ESP_LOGI(TAG, "Start https_request example");
+    LOGI(TAG, "Start https_request example");
 
 #ifdef CONFIG_EXAMPLE_CLIENT_SESSION_TICKETS
     char *server_url = NULL;
@@ -289,7 +289,7 @@ static void https_request_task(void *pvparameters)
         url_buf[len - 1] = '\0';
         server_url = url_buf;
     } else {
-        ESP_LOGE(TAG, "Configuration mismatch: invalid url for local server");
+        LOGE(TAG, "Configuration mismatch: invalid url for local server");
         abort();
     }
     printf("\nServer URL obtained is %s\n", url_buf);
@@ -303,11 +303,11 @@ static void https_request_task(void *pvparameters)
 #if CONFIG_MBEDTLS_CERTIFICATE_BUNDLE && CONFIG_EXAMPLE_USING_ESP_TLS_MBEDTLS
     https_get_request_using_crt_bundle();
 #endif
-    ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
+    LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
     https_get_request_using_cacert_buf();
     https_get_request_using_global_ca_store();
     https_get_request_using_specified_ciphersuites();
-    ESP_LOGI(TAG, "Finish https_request example");
+    LOGI(TAG, "Finish https_request example");
     vTaskDelete(NULL);
 }
 
@@ -324,7 +324,7 @@ void app_main(void)
     ESP_ERROR_CHECK(example_connect());
 
     if (esp_reset_reason() == ESP_RST_POWERON) {
-        ESP_LOGI(TAG, "Updating time from NVS");
+        LOGI(TAG, "Updating time from NVS");
         ESP_ERROR_CHECK(update_time_from_nvs());
     }
 

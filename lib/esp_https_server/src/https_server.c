@@ -6,7 +6,7 @@
 
 #include <string.h>
 #include "esp_https_server.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "sdkconfig.h"
 #include "esp_tls.h"
 
@@ -36,7 +36,7 @@ static void http_dispatch_event_to_event_loop(int32_t event_id, const void* even
 {
     esp_err_t err = esp_event_post(ESP_HTTPS_SERVER_EVENT, event_id, event_data, event_data_size, ESP_HTTPS_SERVER_EVENT_POST_TIMEOUT);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to post http_client event: %"PRId32", error: %s", event_id, esp_err_to_name(err));
+        LOGE(TAG, "Failed to post http_client event: %"PRId32", error: %s", event_id, esp_err_to_name(err));
     }
 }
 
@@ -62,7 +62,7 @@ static void httpd_ssl_close(void *ctx)
 
     esp_tls_server_session_delete(tls);
     free(ctx);
-    ESP_LOGD(TAG, "Secure socket closed");
+    LOGD(TAG, "Secure socket closed");
     http_dispatch_event_to_event_loop(HTTPS_SERVER_EVENT_DISCONNECTED, NULL, 0);
 }
 
@@ -174,10 +174,10 @@ static esp_err_t httpd_ssl_open(httpd_handle_t server, int sockfd)
         http_dispatch_event_to_event_loop(HTTPS_SERVER_EVENT_ERROR, &last_error, sizeof(last_error));
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "performing session handshake");
+    LOGI(TAG, "performing session handshake");
     int ret = esp_tls_server_session_create(global_ctx->tls_cfg, sockfd, tls);
     if (ret != 0) {
-        ESP_LOGE(TAG, "esp_tls_create_server_session failed, 0x%04x", -ret);
+        LOGE(TAG, "esp_tls_create_server_session failed, 0x%04x", -ret);
         goto fail;
     }
 
@@ -203,7 +203,7 @@ static esp_err_t httpd_ssl_open(httpd_handle_t server, int sockfd)
     httpd_sess_set_pending_override(server, sockfd, httpd_ssl_pending);
 
     // all access should now go through SSL
-    ESP_LOGD(TAG, "Secure socket open");
+    LOGD(TAG, "Secure socket open");
 
     if (global_ctx->open_fn) {
         (global_ctx->open_fn)(server, sockfd);
@@ -240,7 +240,7 @@ static void free_secure_context(void *ctx)
     assert(ctx != NULL);
     httpd_ssl_ctx_t *ssl_ctx = ctx;
     esp_tls_cfg_server_t *cfg = ssl_ctx->tls_cfg;
-    ESP_LOGI(TAG, "Server shuts down, releasing SSL context");
+    LOGI(TAG, "Server shuts down, releasing SSL context");
     if (cfg->cacert_buf) {
         free((void *)cfg->cacert_buf);
     }
@@ -270,7 +270,7 @@ static esp_err_t create_secure_context(const struct httpd_ssl_config *config, ht
     if (config->session_tickets) {
         ret = esp_tls_cfg_server_session_tickets_init(cfg);
         if ( ret != ESP_OK ) {
-            ESP_LOGE(TAG, "Failed to init session ticket support. error: %s", esp_err_to_name(ret));
+            LOGE(TAG, "Failed to init session ticket support. error: %s", esp_err_to_name(ret));
             goto exit;
         }
     }
@@ -300,7 +300,7 @@ static esp_err_t create_secure_context(const struct httpd_ssl_config *config, ht
             memcpy((char *) cfg->cacert_buf, config->cacert_pem, config->cacert_len);
             cfg->cacert_bytes = config->cacert_len;
         } else {
-            ESP_LOGE(TAG, "Could not allocate memory for client certificate authority");
+            LOGE(TAG, "Could not allocate memory for client certificate authority");
             ret = ESP_ERR_NO_MEM;
             goto exit;
         }
@@ -314,7 +314,7 @@ static esp_err_t create_secure_context(const struct httpd_ssl_config *config, ht
             memcpy((char *) cfg->servercert_buf, config->servercert, config->servercert_len);
             cfg->servercert_bytes = config->servercert_len;
         } else {
-            ESP_LOGE(TAG, "Could not allocate memory for server certificate");
+            LOGE(TAG, "Could not allocate memory for server certificate");
             ret = ESP_ERR_NO_MEM;
             goto exit;
         }
@@ -322,12 +322,12 @@ static esp_err_t create_secure_context(const struct httpd_ssl_config *config, ht
 #if defined(CONFIG_ESP_HTTPS_SERVER_CERT_SELECT_HOOK)
         if (config->cert_select_cb == NULL) {
 #endif
-        ESP_LOGE(TAG, "No Server certificate supplied");
+        LOGE(TAG, "No Server certificate supplied");
         ret = ESP_ERR_INVALID_ARG;
         goto exit;
 #if defined(CONFIG_ESP_HTTPS_SERVER_CERT_SELECT_HOOK)
         } else {
-            ESP_LOGW(TAG, "Server certificate not supplied, make sure to supply it in the certificate selection hook!");
+            LOGW(TAG, "Server certificate not supplied, make sure to supply it in the certificate selection hook!");
         }
 #endif
     }
@@ -344,7 +344,7 @@ static esp_err_t create_secure_context(const struct httpd_ssl_config *config, ht
 #endif
             (*ssl_ctx)->tls_cfg->ecdsa_curve = config->ecdsa_curve;
 #else
-            ESP_LOGE(TAG, "Please enable the support for signing using ECDSA peripheral in menuconfig.");
+            LOGE(TAG, "Please enable the support for signing using ECDSA peripheral in menuconfig.");
             ret = ESP_ERR_NOT_SUPPORTED;
             goto exit;
 #endif
@@ -355,21 +355,21 @@ static esp_err_t create_secure_context(const struct httpd_ssl_config *config, ht
                 memcpy((char *) cfg->serverkey_buf, config->prvtkey_pem, config->prvtkey_len);
                 cfg->serverkey_bytes = config->prvtkey_len;
             } else {
-                ESP_LOGE(TAG, "Could not allocate memory for server key");
+                LOGE(TAG, "Could not allocate memory for server key");
                 ret = ESP_ERR_NO_MEM;
                 goto exit;
             }
         } else {
 #if defined(CONFIG_ESP_HTTPS_SERVER_CERT_SELECT_HOOK)
             if (config->cert_select_cb == NULL) {
-                ESP_LOGE(TAG, "No Server key supplied and no certificate selection hook is present");
+                LOGE(TAG, "No Server key supplied and no certificate selection hook is present");
                 ret = ESP_ERR_INVALID_ARG;
                 goto exit;
             } else {
-                ESP_LOGW(TAG, "Server key not supplied, make sure to supply it in the certificate selection hook");
+                LOGW(TAG, "Server key not supplied, make sure to supply it in the certificate selection hook");
             }
 #else
-            ESP_LOGE(TAG, "No Server key supplied");
+            LOGE(TAG, "No Server key supplied");
             ret = ESP_ERR_INVALID_ARG;
             goto exit;
 #endif
@@ -393,7 +393,7 @@ esp_err_t httpd_ssl_start(httpd_handle_t *pHandle, struct httpd_ssl_config *conf
     assert(config != NULL);
     assert(pHandle != NULL);
 
-    ESP_LOGI(TAG, "Starting server");
+    LOGI(TAG, "Starting server");
 
     esp_err_t ret = ESP_OK;
     httpd_ssl_ctx_t *ssl_ctx = NULL;
@@ -410,7 +410,7 @@ esp_err_t httpd_ssl_start(httpd_handle_t *pHandle, struct httpd_ssl_config *conf
             return ret;
         }
 
-        ESP_LOGD(TAG, "SSL context ready");
+        LOGD(TAG, "SSL context ready");
 
         // set SSL specific config
         config->httpd.global_transport_ctx = ssl_ctx;
@@ -424,7 +424,7 @@ esp_err_t httpd_ssl_start(httpd_handle_t *pHandle, struct httpd_ssl_config *conf
 
         config->httpd.server_port = config->port_secure;
     } else {
-        ESP_LOGD(TAG, "SSL disabled, using plain HTTP");
+        LOGD(TAG, "SSL disabled, using plain HTTP");
         config->httpd.server_port = config->port_insecure;
     }
 
@@ -439,7 +439,7 @@ esp_err_t httpd_ssl_start(httpd_handle_t *pHandle, struct httpd_ssl_config *conf
 
     *pHandle = handle;
 
-    ESP_LOGI(TAG, "Server listening on port %d", config->httpd.server_port);
+    LOGI(TAG, "Server listening on port %d", config->httpd.server_port);
     http_dispatch_event_to_event_loop(HTTPS_SERVER_EVENT_START, NULL, 0);
     return ESP_OK;
 }

@@ -6,7 +6,7 @@
 
 
 #include <errno.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_err.h>
 #include <http_parser.h>
 
@@ -95,7 +95,7 @@ static httpd_uri_t* httpd_find_uri_handler(struct httpd_data *hd,
         if (!hd->hd_calls[i]) {
             break;
         }
-        ESP_LOGD(TAG, LOG_FMT("[%d] = %s"), i, hd->hd_calls[i]->uri);
+        LOGD(TAG, LOG_FMT("[%d] = %s"), i, hd->hd_calls[i]->uri);
 
         /* Check if custom URI matching function is set,
          * else use simple string compare */
@@ -139,7 +139,7 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
     if (httpd_find_uri_handler(handle, uri_handler->uri,
                                strlen(uri_handler->uri),
                                uri_handler->method, NULL) != NULL) {
-        ESP_LOGW(TAG, LOG_FMT("handler %s with method %d already registered"),
+        LOGW(TAG, LOG_FMT("handler %s with method %d already registered"),
                  uri_handler->uri, uri_handler->method);
         return ESP_ERR_HTTPD_HANDLER_EXISTS;
     }
@@ -184,12 +184,12 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
                 hd->hd_calls[i]->supported_subprotocol = NULL;
             }
 #endif
-            ESP_LOGD(TAG, LOG_FMT("[%d] installed %s"), i, uri_handler->uri);
+            LOGD(TAG, LOG_FMT("[%d] installed %s"), i, uri_handler->uri);
             return ESP_OK;
         }
-        ESP_LOGD(TAG, LOG_FMT("[%d] exists %s"), i, hd->hd_calls[i]->uri);
+        LOGD(TAG, LOG_FMT("[%d] exists %s"), i, hd->hd_calls[i]->uri);
     }
-    ESP_LOGW(TAG, LOG_FMT("no slots left for registering handler"));
+    LOGW(TAG, LOG_FMT("no slots left for registering handler"));
     return ESP_ERR_HTTPD_HANDLERS_FULL;
 }
 
@@ -207,7 +207,7 @@ esp_err_t httpd_unregister_uri_handler(httpd_handle_t handle,
         }
         if ((hd->hd_calls[i]->method == method) &&       // First match methods
             (strcmp(hd->hd_calls[i]->uri, uri) == 0)) {  // Then match URI string
-            ESP_LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
+            LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
 
             free((char*)hd->hd_calls[i]->uri);
             free(hd->hd_calls[i]);
@@ -226,7 +226,7 @@ esp_err_t httpd_unregister_uri_handler(httpd_handle_t handle,
             return ESP_OK;
         }
     }
-    ESP_LOGW(TAG, LOG_FMT("handler %s with method %d not found"), uri, method);
+    LOGW(TAG, LOG_FMT("handler %s with method %d not found"), uri, method);
     return ESP_ERR_NOT_FOUND;
 }
 
@@ -245,7 +245,7 @@ esp_err_t httpd_unregister_uri(httpd_handle_t handle, const char *uri)
             break;
         }
         if (strcmp(hd->hd_calls[i]->uri, uri) == 0) {   // Match URI strings
-            ESP_LOGD(TAG, LOG_FMT("[%d] removing %s"), i, uri);
+            LOGD(TAG, LOG_FMT("[%d] removing %s"), i, uri);
 
             free((char*)hd->hd_calls[i]->uri);
             free(hd->hd_calls[i]);
@@ -265,7 +265,7 @@ esp_err_t httpd_unregister_uri(httpd_handle_t handle, const char *uri)
     }
 
     if (!found) {
-        ESP_LOGW(TAG, LOG_FMT("no handler found for URI %s"), uri);
+        LOGW(TAG, LOG_FMT("no handler found for URI %s"), uri);
     }
     return (found ? ESP_OK : ESP_ERR_NOT_FOUND);
 }
@@ -276,7 +276,7 @@ void httpd_unregister_all_uri_handlers(struct httpd_data *hd)
         if (!hd->hd_calls[i]) {
             break;
         }
-        ESP_LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
+        LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
 
         free((char*)hd->hd_calls[i]->uri);
         free(hd->hd_calls[i]);
@@ -293,7 +293,7 @@ esp_err_t httpd_uri(struct httpd_data *hd)
     /* For conveying URI not found/method not allowed */
     httpd_err_code_t err = 0;
 
-    ESP_LOGD(TAG, LOG_FMT("request for %s with type %d"), req->uri, req->method);
+    LOGD(TAG, LOG_FMT("request for %s with type %d"), req->uri, req->method);
 
     /* URL parser result contains offset and length of path string */
     if (res->field_set & (1 << UF_PATH)) {
@@ -305,10 +305,10 @@ esp_err_t httpd_uri(struct httpd_data *hd)
     if (uri == NULL) {
         switch (err) {
             case HTTPD_404_NOT_FOUND:
-                ESP_LOGW(TAG, LOG_FMT("URI '%s' not found"), req->uri);
+                LOGW(TAG, LOG_FMT("URI '%s' not found"), req->uri);
                 return httpd_req_handle_err(req, HTTPD_404_NOT_FOUND);
             case HTTPD_405_METHOD_NOT_ALLOWED:
-                ESP_LOGW(TAG, LOG_FMT("Method '%d' not allowed for URI '%s'"),
+                LOGW(TAG, LOG_FMT("Method '%d' not allowed for URI '%s'"),
                          req->method, req->uri);
                 return httpd_req_handle_err(req, HTTPD_405_METHOD_NOT_ALLOWED);
             default:
@@ -325,12 +325,12 @@ esp_err_t httpd_uri(struct httpd_data *hd)
     if (uri->is_websocket && aux->ws_handshake_detect && uri->method == HTTP_GET) {
 #ifdef CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT
         if (uri->ws_pre_handshake_cb && uri->ws_pre_handshake_cb(req) != ESP_OK) {
-            ESP_LOGW(TAG, LOG_FMT("ws_pre_handshake_cb failed"));
+            LOGW(TAG, LOG_FMT("ws_pre_handshake_cb failed"));
             return ESP_FAIL;
         }
 #endif
 
-        ESP_LOGD(TAG, LOG_FMT("Responding WS handshake to sock %d"), aux->sd->fd);
+        LOGD(TAG, LOG_FMT("Responding WS handshake to sock %d"), aux->sd->fd);
         esp_err_t ret = httpd_ws_respond_server_handshake(&hd->hd_req, uri->supported_subprotocol);
         if (ret != ESP_OK) {
             return ret;
@@ -346,7 +346,7 @@ esp_err_t httpd_uri(struct httpd_data *hd)
     /* Invoke handler */
     if (uri->handler(req) != ESP_OK) {
         /* Handler returns error, this socket should be closed */
-        ESP_LOGW(TAG, LOG_FMT("uri handler execution failed"));
+        LOGW(TAG, LOG_FMT("uri handler execution failed"));
         return ESP_FAIL;
     }
     return ESP_OK;

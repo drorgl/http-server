@@ -9,7 +9,7 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_event.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "mdns.h"
 #include "lwip/apps/netbiosns.h"
 #include "protocol_examples_common.h"
@@ -49,11 +49,11 @@ esp_err_t init_fs(void)
 
     if (ret != ESP_OK) {
         if (ret == ESP_FAIL) {
-            ESP_LOGE(TAG, "Failed to mount or format filesystem");
+            LOGE(TAG, "Failed to mount or format filesystem");
         } else if (ret == ESP_ERR_NOT_FOUND) {
-            ESP_LOGE(TAG, "Failed to find LittleFS partition");
+            LOGE(TAG, "Failed to find LittleFS partition");
         } else {
-            ESP_LOGE(TAG, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
+            LOGE(TAG, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
         }
         return ESP_FAIL;
     }
@@ -61,10 +61,10 @@ esp_err_t init_fs(void)
     size_t total = 0, used = 0;
     ret = esp_littlefs_info(conf.partition_label, &total, &used);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get LittleFS partition information (%s)", esp_err_to_name(ret));
+        LOGE(TAG, "Failed to get LittleFS partition information (%s)", esp_err_to_name(ret));
         esp_littlefs_format(conf.partition_label);
     } else {
-        ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
+        LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
     }
 #endif // CONFIG_EXAMPLE_DEPLOY_WEB_PAGES
     return ESP_OK;

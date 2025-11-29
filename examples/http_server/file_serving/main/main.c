@@ -13,7 +13,7 @@
 */
 
 #include "esp_event.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "esp_netif.h"
 #include "esp_err.h"
 #include "nvs_flash.h"
@@ -29,7 +29,7 @@ static const char *TAG = "example";
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Starting example");
+    LOGI(TAG, "Starting example");
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -46,5 +46,5 @@ void app_main(void)
 
     /* Start the file server */
     ESP_ERROR_CHECK(example_start_file_server(base_path));
-    ESP_LOGI(TAG, "File server started");
+    LOGI(TAG, "File server started");
 }

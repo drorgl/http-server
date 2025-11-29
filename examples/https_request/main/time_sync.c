@@ -12,7 +12,7 @@
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -32,7 +32,7 @@ static const char *TAG = "time_sync";
 
 void initialize_sntp(void)
 {
-    ESP_LOGI(TAG, "Initializing SNTP");
+    LOGI(TAG, "Initializing SNTP");
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,
                                ESP_SNTP_SERVER_LIST("time.windows.com", "pool.ntp.org" ) );
     esp_netif_sntp_init(&config);
@@ -44,7 +44,7 @@ static esp_err_t obtain_time(void)
     int retry = 0;
     const int retry_count = 10;
     while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(2000)) != ESP_OK && ++retry < retry_count) {
-        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
     }
     if (retry == retry_count) {
         return ESP_FAIL;
@@ -90,9 +90,9 @@ exit:
     esp_netif_sntp_deinit();
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error updating time in nvs");
+        LOGE(TAG, "Error updating time in nvs");
     } else {
-        ESP_LOGI(TAG, "Updated time in NVS");
+        LOGI(TAG, "Updated time in NVS");
     }
     return err;
 }
@@ -104,7 +104,7 @@ esp_err_t update_time_from_nvs(void)
 
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error opening NVS");
+        LOGE(TAG, "Error opening NVS");
         goto exit;
     }
 
@@ -112,7 +112,7 @@ esp_err_t update_time_from_nvs(void)
 
     err = nvs_get_i64(my_handle, "timestamp", &timestamp);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGI(TAG, "Time not found in NVS. Syncing time from SNTP server.");
+        LOGI(TAG, "Time not found in NVS. Syncing time from SNTP server.");
         if (fetch_and_store_time_in_nvs(NULL) != ESP_OK) {
             err = ESP_FAIL;
         } else {

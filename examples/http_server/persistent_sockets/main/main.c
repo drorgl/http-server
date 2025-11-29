@@ -9,7 +9,7 @@
 
 #include <esp_wifi.h>
 #include <esp_event.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_system.h>
 #include <nvs_flash.h>
 #include "esp_netif.h"
@@ -28,7 +28,7 @@ static const char *TAG = "example";
 /* Function to free context */
 static void adder_free_func(void *ctx)
 {
-    ESP_LOGI(TAG, "/adder Free Context function called");
+    LOGI(TAG, "/adder Free Context function called");
     free(ctx);
 }
 
@@ -39,7 +39,7 @@ static esp_err_t adder_post_handler(httpd_req_t *req)
 {
     /* Log total visitors */
     unsigned *visitors = (unsigned *)req->user_ctx;
-    ESP_LOGI(TAG, "/adder visitor count = %d", ++(*visitors));
+    LOGI(TAG, "/adder visitor count = %d", ++(*visitors));
 
     char buf[10];
     char outbuf[50];
@@ -56,11 +56,11 @@ static esp_err_t adder_post_handler(httpd_req_t *req)
 
     buf[ret] = '\0';
     int val = atoi(buf);
-    ESP_LOGI(TAG, "/adder handler read %d", val);
+    LOGI(TAG, "/adder handler read %d", val);
 
     /* Create session's context if not already available */
     if (! req->sess_ctx) {
-        ESP_LOGI(TAG, "/adder allocating new session");
+        LOGI(TAG, "/adder allocating new session");
         req->sess_ctx = malloc(sizeof(int));
         ESP_RETURN_ON_FALSE(req->sess_ctx, ESP_ERR_NO_MEM, TAG, "Failed to allocate sess_ctx");
         req->free_ctx = adder_free_func;
@@ -82,19 +82,19 @@ static esp_err_t adder_get_handler(httpd_req_t *req)
 {
     /* Log total visitors */
     unsigned *visitors = (unsigned *)req->user_ctx;
-    ESP_LOGI(TAG, "/adder visitor count = %d", ++(*visitors));
+    LOGI(TAG, "/adder visitor count = %d", ++(*visitors));
 
     char outbuf[50];
 
     /* Create session's context if not already available */
     if (! req->sess_ctx) {
-        ESP_LOGI(TAG, "/adder GET allocating new session");
+        LOGI(TAG, "/adder GET allocating new session");
         req->sess_ctx = malloc(sizeof(int));
         ESP_RETURN_ON_FALSE(req->sess_ctx, ESP_ERR_NO_MEM, TAG, "Failed to allocate sess_ctx");
         req->free_ctx = adder_free_func;
         *(int *)req->sess_ctx = 0;
     }
-    ESP_LOGI(TAG, "/adder GET handler send %d", *(int *)req->sess_ctx);
+    LOGI(TAG, "/adder GET handler send %d", *(int *)req->sess_ctx);
 
     /* Respond with the accumulated value */
     snprintf(outbuf, sizeof(outbuf),"%d", *((int *)req->sess_ctx));
@@ -109,20 +109,20 @@ static esp_err_t login_handler(httpd_req_t *req)
 {
     /* Log total visitors */
     unsigned *visitors = (unsigned *)req->user_ctx;
-    ESP_LOGI(TAG, "/login visitor count = %d", ++(*visitors));
+    LOGI(TAG, "/login visitor count = %d", ++(*visitors));
 
     char outbuf[50];
 
     /* Create session's context if not already available */
     if (! req->sess_ctx) {
-        ESP_LOGI(TAG, "/login GET allocating new session");
+        LOGI(TAG, "/login GET allocating new session");
         req->sess_ctx = malloc(sizeof(int));
         if (!req->sess_ctx) {
             return ESP_ERR_NO_MEM;
         }
         *(int *)req->sess_ctx = 1;
     }
-    ESP_LOGI(TAG, "/login GET handler send %d", *(int *)req->sess_ctx);
+    LOGI(TAG, "/login GET handler send %d", *(int *)req->sess_ctx);
 
     /* Respond with the accumulated value */
     snprintf(outbuf, sizeof(outbuf),"%d", *((int *)req->sess_ctx));
@@ -133,7 +133,7 @@ static esp_err_t login_handler(httpd_req_t *req)
 // This handler sets sess_ctx to NULL.
 static esp_err_t logout_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "Logging out");
+    LOGI(TAG, "Logging out");
     // Setting sess_ctx to NULL here. This is done to test the server functionality to free the older sesss_ctx if it is changed by some handler.
     req->sess_ctx = NULL;
     char outbuf[50];
@@ -148,7 +148,7 @@ static esp_err_t adder_put_handler(httpd_req_t *req)
 {
     /* Log total visitors */
     unsigned *visitors = (unsigned *)req->user_ctx;
-    ESP_LOGI(TAG, "/adder visitor count = %d", ++(*visitors));
+    LOGI(TAG, "/adder visitor count = %d", ++(*visitors));
 
     char buf[10];
     char outbuf[50];
@@ -165,11 +165,11 @@ static esp_err_t adder_put_handler(httpd_req_t *req)
 
     buf[ret] = '\0';
     int val = atoi(buf);
-    ESP_LOGI(TAG, "/adder PUT handler read %d", val);
+    LOGI(TAG, "/adder PUT handler read %d", val);
 
     /* Create session's context if not already available */
     if (! req->sess_ctx) {
-        ESP_LOGI(TAG, "/adder PUT allocating new session");
+        LOGI(TAG, "/adder PUT allocating new session");
         req->sess_ctx = malloc(sizeof(int));
         ESP_RETURN_ON_FALSE(req->sess_ctx, ESP_ERR_NO_MEM, TAG, "Failed to allocate sess_ctx");
         req->free_ctx = adder_free_func;
@@ -227,12 +227,12 @@ static httpd_handle_t start_webserver(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     // Start the httpd server
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+    LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     httpd_handle_t server;
 
     if (httpd_start(&server, &config) == ESP_OK) {
         // Set URI handlers
-        ESP_LOGI(TAG, "Registering URI handlers");
+        LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &adder_get);
 #if CONFIG_EXAMPLE_SESSION_CTX_HANDLERS
         httpd_register_uri_handler(server, &login);
@@ -243,7 +243,7 @@ static httpd_handle_t start_webserver(void)
         return server;
     }
 
-    ESP_LOGI(TAG, "Error starting server!");
+    LOGI(TAG, "Error starting server!");
     return NULL;
 }
 
@@ -259,11 +259,11 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
-        ESP_LOGI(TAG, "Stopping webserver");
+        LOGI(TAG, "Stopping webserver");
         if (stop_webserver(*server) == ESP_OK) {
             *server = NULL;
         } else {
-            ESP_LOGE(TAG, "Failed to stop http server");
+            LOGE(TAG, "Failed to stop http server");
         }
     }
 }
@@ -273,7 +273,7 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server == NULL) {
-        ESP_LOGI(TAG, "Starting webserver");
+        LOGI(TAG, "Starting webserver");
         *server = start_webserver();
     }
 }

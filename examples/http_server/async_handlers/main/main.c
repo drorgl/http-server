@@ -10,7 +10,7 @@
 #include "freertos/semphr.h"
 #include <esp_wifi.h>
 #include <esp_event.h>
-#include <esp_log.h>
+#include "log.h"
 #include <esp_system.h>
 #include <nvs_flash.h>
 #include <sys/param.h>
@@ -76,7 +76,7 @@ static esp_err_t queue_request(httpd_req_t *req, httpd_req_handler_t handler)
     // counting semaphore: if success, we know 1 or
     // more asyncReqTaskWorkers are available.
     if (xSemaphoreTake(worker_ready_count, ticks) == false) {
-        ESP_LOGE(TAG, "No workers are available");
+        LOGE(TAG, "No workers are available");
         httpd_req_async_handler_complete(copy); // cleanup
         return ESP_FAIL;
     }
@@ -84,7 +84,7 @@ static esp_err_t queue_request(httpd_req_t *req, httpd_req_handler_t handler)
     // Since worker_ready_count > 0 the queue should already have space.
     // But lets wait up to 100ms just to be safe.
     if (xQueueSend(request_queue, &async_req, pdMS_TO_TICKS(100)) == false) {
-        ESP_LOGE(TAG, "worker queue is full");
+        LOGE(TAG, "worker queue is full");
         httpd_req_async_handler_complete(copy); // cleanup
         return ESP_FAIL;
     }
@@ -99,7 +99,7 @@ static esp_err_t long_async(httpd_req_t *req)
     size_t buf_len;
 
     /* Get URI */
-    ESP_LOGI(TAG, "Request URI: %s", req->uri);
+    LOGI(TAG, "Request URI: %s", req->uri);
 
     /* Get header value string length and allocate memory for length + 1,
      * extra byte for null termination */
@@ -107,12 +107,12 @@ static esp_err_t long_async(httpd_req_t *req)
     if (buf_len > 1) {
         buf = malloc(buf_len);
         if (buf == NULL) {
-            ESP_LOGE(TAG, "Failed to allocate memory for headers");
+            LOGE(TAG, "Failed to allocate memory for headers");
             return ESP_FAIL;
         }
         /* Copy null terminated value string into buffer */
         if (httpd_req_get_hdr_value_str(req, "Host", buf, buf_len) == ESP_OK) {
-            ESP_LOGI(TAG, "Found header => Host: %s", buf);
+            LOGI(TAG, "Found header => Host: %s", buf);
         }
         free(buf);
     }
@@ -122,12 +122,12 @@ static esp_err_t long_async(httpd_req_t *req)
     if (buf_len > 1) {
         buf = malloc(buf_len);
         if (buf == NULL) {
-            ESP_LOGE(TAG, "Failed to allocate memory for query string");
+            LOGE(TAG, "Failed to allocate memory for query string");
             return ESP_FAIL;
         }
         /* Copy null terminated query string into buffer */
         if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
-            ESP_LOGI(TAG, "Found query string => %s", buf);
+            LOGI(TAG, "Found query string => %s", buf);
         }
         free(buf);
     }
@@ -141,7 +141,7 @@ static esp_err_t long_async(httpd_req_t *req)
     snprintf(s, sizeof(s), "<div>req: %u</div>\n", req_count);
     esp_err_t err = httpd_resp_sendstr_chunk(req, s);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to send string chunk: %s", esp_err_to_name(err));
+        LOGE(TAG, "Failed to send string chunk: %s", esp_err_to_name(err));
         return err;
     }
 
@@ -157,7 +157,7 @@ static esp_err_t long_async(httpd_req_t *req)
         snprintf(s, sizeof(s), "<div>%u</div>\n", i);
         err = httpd_resp_sendstr_chunk(req, s);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to send string chunk: %s", esp_err_to_name(err));
+            LOGE(TAG, "Failed to send string chunk: %s", esp_err_to_name(err));
             return err;
         }
     }
@@ -165,7 +165,7 @@ static esp_err_t long_async(httpd_req_t *req)
     // send "complete"
     err = httpd_resp_sendstr_chunk(req, NULL);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to send string chunk: %s", esp_err_to_name(err));
+        LOGE(TAG, "Failed to send string chunk: %s", esp_err_to_name(err));
         return err;
     }
 
@@ -175,7 +175,7 @@ static esp_err_t long_async(httpd_req_t *req)
 // each worker thread loops forever, processing requests
 static void worker_task(void *p)
 {
-    ESP_LOGI(TAG, "starting async req task worker");
+    LOGI(TAG, "starting async req task worker");
 
     while (true) {
 
@@ -187,7 +187,7 @@ static void worker_task(void *p)
         httpd_async_req_t async_req;
         if (xQueueReceive(request_queue, &async_req, portMAX_DELAY)) {
 
-            ESP_LOGI(TAG, "invoking %s", async_req.req->uri);
+            LOGI(TAG, "invoking %s", async_req.req->uri);
 
             // call the handler
             async_req.handler(async_req.req);
@@ -195,12 +195,12 @@ static void worker_task(void *p)
             // Inform the server that it can purge the socket used for
             // this request, if needed.
             if (httpd_req_async_handler_complete(async_req.req) != ESP_OK) {
-                ESP_LOGE(TAG, "failed to complete async req");
+                LOGE(TAG, "failed to complete async req");
             }
         }
     }
 
-    ESP_LOGW(TAG, "worker stopped");
+    LOGW(TAG, "worker stopped");
     vTaskDelete(NULL);
 }
 
@@ -213,14 +213,14 @@ static void start_workers(void)
         CONFIG_EXAMPLE_MAX_ASYNC_REQUESTS,  // Max Count
         0); // Initial Count
     if (worker_ready_count == NULL) {
-        ESP_LOGE(TAG, "Failed to create workers counting Semaphore");
+        LOGE(TAG, "Failed to create workers counting Semaphore");
         return;
     }
 
     // create queue
     request_queue = xQueueCreate(1, sizeof(httpd_async_req_t));
     if (request_queue == NULL){
-        ESP_LOGE(TAG, "Failed to create request_queue");
+        LOGE(TAG, "Failed to create request_queue");
         vSemaphoreDelete(worker_ready_count);
         return;
     }
@@ -235,7 +235,7 @@ static void start_workers(void)
                                     &worker_handles[i]);
 
         if (!success) {
-            ESP_LOGE(TAG, "Failed to start asyncReqWorker");
+            LOGE(TAG, "Failed to start asyncReqWorker");
             continue;
         }
     }
@@ -244,7 +244,7 @@ static void start_workers(void)
 /* adds /long request to the request queue */
 static esp_err_t long_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "uri: /long");
+    LOGI(TAG, "uri: /long");
 
     // add to the async request queue
     if (queue_request(req, long_async) == ESP_OK) {
@@ -260,7 +260,7 @@ static esp_err_t long_handler(httpd_req_t *req)
    use any asynchronous features */
 static esp_err_t quick_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "uri: /quick");
+    LOGI(TAG, "uri: /quick");
     char s[100];
     snprintf(s, sizeof(s), "random: %u\n", rand());
     httpd_resp_sendstr(req, s);
@@ -269,7 +269,7 @@ static esp_err_t quick_handler(httpd_req_t *req)
 
 static esp_err_t index_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "uri: /");
+    LOGI(TAG, "uri: /");
     const char* html = "<div><a href=\"/long\">long</a></div>"
         "<div><a href=\"/quick\">quick</a></div>";
     httpd_resp_sendstr(req, html);
@@ -290,9 +290,9 @@ static httpd_handle_t start_webserver(void)
     config.max_open_sockets = CONFIG_EXAMPLE_MAX_ASYNC_REQUESTS + 1;
 
     // Start the httpd server
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+    LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) != ESP_OK) {
-        ESP_LOGI(TAG, "Error starting server!");
+        LOGI(TAG, "Error starting server!");
         return NULL;
     }
 
@@ -315,7 +315,7 @@ static httpd_handle_t start_webserver(void)
     };
 
     // Set URI handlers
-    ESP_LOGI(TAG, "Registering URI handlers");
+    LOGI(TAG, "Registering URI handlers");
     httpd_register_uri_handler(server, &index_uri);
     httpd_register_uri_handler(server, &long_uri);
     httpd_register_uri_handler(server, &quick_uri);
@@ -334,11 +334,11 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
-        ESP_LOGI(TAG, "Stopping webserver");
+        LOGI(TAG, "Stopping webserver");
         if (stop_webserver(*server) == ESP_OK) {
             *server = NULL;
         } else {
-            ESP_LOGE(TAG, "Failed to stop http server");
+            LOGE(TAG, "Failed to stop http server");
         }
     }
 }
@@ -348,7 +348,7 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server == NULL) {
-        ESP_LOGI(TAG, "Starting webserver");
+        LOGI(TAG, "Starting webserver");
         *server = start_webserver();
     }
 }

@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include <sys/param.h>
 #include <errno.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_err.h>
 #include <assert.h>
 #include <netinet/tcp.h>
@@ -44,7 +44,7 @@ void esp_http_server_dispatch_event(int32_t event_id, const void* event_data, si
 {
     esp_err_t err = esp_event_post(ESP_HTTP_SERVER_EVENT, event_id, event_data, event_data_size, ESP_HTTP_SERVER_EVENT_POST_TIMEOUT);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to post esp_http_server event: %s", esp_err_to_name(err));
+        LOGE(TAG, "Failed to post esp_http_server event: %s", esp_err_to_name(err));
     }
 }
 
@@ -68,17 +68,17 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
     socklen_t addr_from_len = sizeof(addr_from);
     int new_fd = accept(listen_fd, (struct sockaddr *)&addr_from, &addr_from_len);
     if (new_fd < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in accept (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in accept (%d)"), errno);
         return ESP_FAIL;
     }
-    ESP_LOGD(TAG, LOG_FMT("newfd = %d"), new_fd);
+    LOGD(TAG, LOG_FMT("newfd = %d"), new_fd);
 
     struct timeval tv;
     /* Set recv timeout of this fd as per config */
     tv.tv_sec = hd->config.recv_wait_timeout;
     tv.tv_usec = 0;
     if (setsockopt(new_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv)) < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in setsockopt SO_RCVTIMEO (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in setsockopt SO_RCVTIMEO (%d)"), errno);
         goto exit;
     }
 
@@ -86,7 +86,7 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
     tv.tv_sec = hd->config.send_wait_timeout;
     tv.tv_usec = 0;
     if (setsockopt(new_fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv)) < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in setsockopt SO_SNDTIMEO (%d)"), errno);
         goto exit;
     }
 
@@ -95,37 +95,37 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
         int keep_alive_idle = hd->config.keep_alive_idle ? hd->config.keep_alive_idle : DEFAULT_KEEP_ALIVE_IDLE;
         int keep_alive_interval = hd->config.keep_alive_interval ? hd->config.keep_alive_interval : DEFAULT_KEEP_ALIVE_INTERVAL;
         int keep_alive_count = hd->config.keep_alive_count ? hd->config.keep_alive_count : DEFAULT_KEEP_ALIVE_COUNT;
-        ESP_LOGD(TAG, "Enable TCP keep alive. idle: %d, interval: %d, count: %d", keep_alive_idle, keep_alive_interval, keep_alive_count);
+        LOGD(TAG, "Enable TCP keep alive. idle: %d, interval: %d, count: %d", keep_alive_idle, keep_alive_interval, keep_alive_count);
 
         if (setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive_enable, sizeof(keep_alive_enable)) < 0) {
-            ESP_LOGE(TAG, LOG_FMT("error in setsockopt SO_KEEPALIVE (%d)"), errno);
+            LOGE(TAG, LOG_FMT("error in setsockopt SO_KEEPALIVE (%d)"), errno);
             goto exit;
         }
 #ifndef __APPLE__
         if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPIDLE, &keep_alive_idle, sizeof(keep_alive_idle)) < 0) {
-            ESP_LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPIDLE (%d)"), errno);
+            LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPIDLE (%d)"), errno);
             goto exit;
         }
         if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPINTVL, &keep_alive_interval, sizeof(keep_alive_interval)) < 0) {
-            ESP_LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPINTVL (%d)"), errno);
+            LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPINTVL (%d)"), errno);
             goto exit;
         }
         if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPCNT, &keep_alive_count, sizeof(keep_alive_count)) < 0) {
-            ESP_LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPCNT (%d)"), errno);
+            LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPCNT (%d)"), errno);
             goto exit;
         }
 #else // __APPLE__
         if (setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPALIVE, &keep_alive_idle, sizeof(keep_alive_idle)) < 0) {
-            ESP_LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPALIVE (%d)"), errno);
+            LOGE(TAG, LOG_FMT("error in setsockopt TCP_KEEPALIVE (%d)"), errno);
             goto exit;
         }
 #endif // __APPLE__
     }
     if (ESP_OK != httpd_sess_new(hd, new_fd)) {
-        ESP_LOGE(TAG, LOG_FMT("session creation failed"));
+        LOGE(TAG, LOG_FMT("session creation failed"));
         goto exit;
     }
-    ESP_LOGD(TAG, LOG_FMT("complete"));
+    LOGD(TAG, LOG_FMT("complete"));
     hd->http_server_state = HTTP_SERVER_EVENT_ON_CONNECTED;
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ON_CONNECTED, &new_fd, sizeof(int));
     return ESP_OK;
@@ -152,7 +152,7 @@ esp_err_t httpd_queue_work(httpd_handle_t handle, httpd_work_fn_t work, void *ar
 #endif
         int ret = cs_send_to_ctrl_sock(hd->msg_fd, hd->config.ctrl_port, &msg, sizeof(msg));
         if (ret < 0) {
-            ESP_LOGW(TAG, LOG_FMT("failed to queue work"));
+            LOGW(TAG, LOG_FMT("failed to queue work"));
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
             xSemaphoreGive(hd->ctrl_sock_semaphore);
 #endif
@@ -161,7 +161,7 @@ esp_err_t httpd_queue_work(httpd_handle_t handle, httpd_work_fn_t work, void *ar
         return ESP_OK;
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
     }
-    ESP_LOGE(TAG, "Unable to acquire semaphore");
+    LOGE(TAG, "Unable to acquire semaphore");
     return ESP_FAIL;
 #endif
 }
@@ -202,14 +202,14 @@ static void httpd_process_ctrl_msg(struct httpd_data *hd)
     struct httpd_ctrl_data msg;
     int ret = recv(hd->ctrl_fd, &msg, sizeof(msg), 0);
     if (ret <= 0) {
-        ESP_LOGW(TAG, LOG_FMT("error in recv (%d)"), errno);
+        LOGW(TAG, LOG_FMT("error in recv (%d)"), errno);
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
         xSemaphoreGive(hd->ctrl_sock_semaphore);
 #endif
         return;
     }
     if (ret != sizeof(msg)) {
-        ESP_LOGW(TAG, LOG_FMT("incomplete msg"));
+        LOGW(TAG, LOG_FMT("incomplete msg"));
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
         xSemaphoreGive(hd->ctrl_sock_semaphore);
 #endif
@@ -219,12 +219,12 @@ static void httpd_process_ctrl_msg(struct httpd_data *hd)
     switch (msg.hc_msg) {
     case HTTPD_CTRL_WORK:
         if (msg.hc_work) {
-            ESP_LOGD(TAG, LOG_FMT("work"));
+            LOGD(TAG, LOG_FMT("work"));
             (*msg.hc_work)(msg.hc_work_arg);
         }
         break;
     case HTTPD_CTRL_SHUTDOWN:
-        ESP_LOGD(TAG, LOG_FMT("shutdown"));
+        LOGD(TAG, LOG_FMT("shutdown"));
         hd->hd_td.status = THREAD_STOPPING;
         break;
     default:
@@ -255,7 +255,7 @@ static int httpd_process_session(struct sock_db *session, void *context)
     int fd = session->fd;
 
     if (FD_ISSET(fd, ctx->fdset) || httpd_sess_pending(ctx->hd, session)) {
-        ESP_LOGD(TAG, LOG_FMT("processing socket %d"), fd);
+        LOGD(TAG, LOG_FMT("processing socket %d"), fd);
         if (httpd_sess_process(ctx->hd, session) != ESP_OK) {
             httpd_sess_delete(ctx->hd, session); // Delete session
         }
@@ -282,20 +282,20 @@ static esp_err_t httpd_server(struct httpd_data *hd)
     tmp_max_fd = maxfd;
     maxfd = MAX(hd->ctrl_fd, tmp_max_fd);
 
-    ESP_LOGD(TAG, LOG_FMT("doing select maxfd+1 = %d"), maxfd + 1);
+    LOGD(TAG, LOG_FMT("doing select maxfd+1 = %d"), maxfd + 1);
     int active_cnt = select(maxfd + 1, &read_set, NULL, NULL, NULL);
     if (active_cnt < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in select (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in select (%d)"), errno);
         httpd_sess_delete_invalid(hd);
         return ESP_OK;
     }
 
     /* Case0: Do we have a control message? */
     if (FD_ISSET(hd->ctrl_fd, &read_set)) {
-        ESP_LOGD(TAG, LOG_FMT("processing ctrl message"));
+        LOGD(TAG, LOG_FMT("processing ctrl message"));
         httpd_process_ctrl_msg(hd);
         if (hd->hd_td.status == THREAD_STOPPING) {
-            ESP_LOGD(TAG, LOG_FMT("stopping thread"));
+            LOGD(TAG, LOG_FMT("stopping thread"));
             return ESP_FAIL;
         }
     }
@@ -311,9 +311,9 @@ static esp_err_t httpd_server(struct httpd_data *hd)
     /* Case2: Do we have any incoming connection requests to
      * process? */
     if (FD_ISSET(hd->listen_fd, &read_set)) {
-        ESP_LOGD(TAG, LOG_FMT("processing listen socket %d"), hd->listen_fd);
+        LOGD(TAG, LOG_FMT("processing listen socket %d"), hd->listen_fd);
         if (httpd_accept_conn(hd, hd->listen_fd) != ESP_OK) {
-            ESP_LOGW(TAG, LOG_FMT("error accepting new connection"));
+            LOGW(TAG, LOG_FMT("error accepting new connection"));
         }
     }
     return ESP_OK;
@@ -326,7 +326,7 @@ static void httpd_thread(void *arg)
     struct httpd_data *hd = (struct httpd_data *) arg;
     hd->hd_td.status = THREAD_RUNNING;
 
-    ESP_LOGD(TAG, LOG_FMT("web server started"));
+    LOGD(TAG, LOG_FMT("web server started"));
     while (1) {
         ret = httpd_server(hd);
         if (ret != ESP_OK) {
@@ -334,7 +334,7 @@ static void httpd_thread(void *arg)
         }
     }
 
-    ESP_LOGD(TAG, LOG_FMT("web server exiting"));
+    LOGD(TAG, LOG_FMT("web server exiting"));
     close(hd->msg_fd);
     cs_free_ctrl_sock(hd->ctrl_fd);
     httpd_sess_close_all(hd);
@@ -351,7 +351,7 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
     int fd = socket(PF_INET, SOCK_STREAM, 0);
 #endif
     if (fd < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in socket (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in socket (%d)"), errno);
         return ESP_FAIL;
     }
 #if CONFIG_LWIP_IPV6
@@ -376,33 +376,33 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) < 0) {
         /* This will fail if CONFIG_LWIP_SO_REUSE is not enabled. But
          * it does not affect the normal working of the HTTP Server */
-        ESP_LOGW(TAG, LOG_FMT("error in setsockopt SO_REUSEADDR (%d)"), errno);
+        LOGW(TAG, LOG_FMT("error in setsockopt SO_REUSEADDR (%d)"), errno);
     }
 
     int ret = bind(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     if (ret < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in bind (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in bind (%d)"), errno);
         close(fd);
         return ESP_FAIL;
     }
 
     ret = listen(fd, hd->config.backlog_conn);
     if (ret < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in listen (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in listen (%d)"), errno);
         close(fd);
         return ESP_FAIL;
     }
 
     int ctrl_fd = cs_create_ctrl_sock(hd->config.ctrl_port);
     if (ctrl_fd < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in creating ctrl socket (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in creating ctrl socket (%d)"), errno);
         close(fd);
         return ESP_FAIL;
     }
 
     int msg_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (msg_fd < 0) {
-        ESP_LOGE(TAG, LOG_FMT("error in creating msg socket (%d)"), errno);
+        LOGE(TAG, LOG_FMT("error in creating msg socket (%d)"), errno);
         close(fd);
         close(ctrl_fd);
         return ESP_FAIL;
@@ -419,18 +419,18 @@ static struct httpd_data *httpd_create(const httpd_config_t *config)
     /* Allocate memory for httpd instance data */
     struct httpd_data *hd = calloc(1, sizeof(struct httpd_data));
     if (!hd) {
-        ESP_LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP server instance"));
+        LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP server instance"));
         return NULL;
     }
     hd->hd_calls = calloc(config->max_uri_handlers, sizeof(httpd_uri_t *));
     if (!hd->hd_calls) {
-        ESP_LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP URI handlers"));
+        LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP URI handlers"));
         free(hd);
         return NULL;
     }
     hd->hd_sd = calloc(config->max_open_sockets, sizeof(struct sock_db));
     if (!hd->hd_sd) {
-        ESP_LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP session data"));
+        LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP session data"));
         free(hd->hd_calls);
         free(hd);
         return NULL;
@@ -438,7 +438,7 @@ static struct httpd_data *httpd_create(const httpd_config_t *config)
     struct httpd_req_aux *ra = &hd->hd_req_aux;
     ra->resp_hdrs = calloc(config->max_resp_headers, sizeof(struct resp_hdr));
     if (!ra->resp_hdrs) {
-        ESP_LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP response headers"));
+        LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP response headers"));
         free(hd->hd_sd);
         free(hd->hd_calls);
         free(hd);
@@ -446,7 +446,7 @@ static struct httpd_data *httpd_create(const httpd_config_t *config)
     }
     hd->err_handler_fns = calloc(HTTPD_ERR_CODE_MAX, sizeof(httpd_err_handler_func_t));
     if (!hd->err_handler_fns) {
-        ESP_LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP error handlers"));
+        LOGE(TAG, LOG_FMT("Failed to allocate memory for HTTP error handlers"));
         free(ra->resp_hdrs);
         free(hd->hd_sd);
         free(hd->hd_calls);
@@ -489,7 +489,7 @@ esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config)
      * So the total number of required sockets is max_open_sockets + 3
      */
     if (HTTPD_MAX_SOCKETS < config->max_open_sockets + 3) {
-        ESP_LOGE(TAG, "Config option max_open_sockets is too large (max allowed %d, 3 sockets used by HTTP server internally)\n\t"
+        LOGE(TAG, "Config option max_open_sockets is too large (max allowed %d, 3 sockets used by HTTP server internally)\n\t"
                  "Either decrease this or configure LWIP_MAX_SOCKETS to a larger value",
                  HTTPD_MAX_SOCKETS - 3);
         return ESP_ERR_INVALID_ARG;
@@ -507,7 +507,7 @@ esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config)
      */
     hd->ctrl_sock_semaphore = xSemaphoreCreateCounting(CONFIG_LWIP_UDP_RECVMBOX_SIZE, CONFIG_LWIP_UDP_RECVMBOX_SIZE);
     if (hd->ctrl_sock_semaphore == NULL) {
-        ESP_LOGE(TAG, "Failed to create Semaphore");
+        LOGE(TAG, "Failed to create Semaphore");
         httpd_delete(hd);
         return ESP_ERR_HTTPD_ALLOC_MEM;
     }
@@ -549,11 +549,11 @@ esp_err_t httpd_stop(httpd_handle_t handle)
     msg.hc_msg = HTTPD_CTRL_SHUTDOWN;
     int ret = 0;
     if ((ret = cs_send_to_ctrl_sock(hd->msg_fd, hd->config.ctrl_port, &msg, sizeof(msg))) < 0) {
-        ESP_LOGE(TAG, "Failed to send shutdown signal err=%d", ret);
+        LOGE(TAG, "Failed to send shutdown signal err=%d", ret);
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, LOG_FMT("sent control msg to stop server"));
+    LOGD(TAG, LOG_FMT("sent control msg to stop server"));
     while (hd->hd_td.status != THREAD_STOPPED) {
         httpd_os_thread_sleep(100);
     }
@@ -578,7 +578,7 @@ esp_err_t httpd_stop(httpd_handle_t handle)
         hd->config.global_transport_ctx = NULL;
     }
 
-    ESP_LOGD(TAG, LOG_FMT("server stopped"));
+    LOGD(TAG, LOG_FMT("server stopped"));
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
     vSemaphoreDelete(hd->ctrl_sock_semaphore);
 #endif

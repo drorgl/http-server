@@ -9,7 +9,7 @@
 
 #include <esp_wifi.h>
 #include <esp_event.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_system.h>
 #include <nvs_flash.h>
 #include <sys/param.h>
@@ -38,7 +38,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == ESP_HTTPS_SERVER_EVENT) {
         if (event_id == HTTPS_SERVER_EVENT_ERROR) {
             esp_https_server_last_error_t *last_error = (esp_tls_last_error_t *) event_data;
-            ESP_LOGE(TAG, "Error event triggered: last_error = %s, last_tls_err = %d, tls_flag = %d", esp_err_to_name(last_error->last_error), last_error->esp_tls_error_code, last_error->esp_tls_flags);
+            LOGE(TAG, "Error event triggered: last_error = %s, last_tls_err = %d, tls_flag = %d", esp_err_to_name(last_error->last_error), last_error->esp_tls_error_code, last_error->esp_tls_flags);
         }
     }
 }
@@ -60,7 +60,7 @@ static void print_peer_cert_info(const mbedtls_ssl_context *ssl)
     const size_t buf_size = 1024;
     char *buf = calloc(buf_size, sizeof(char));
     if (buf == NULL) {
-        ESP_LOGE(TAG, "Out of memory - Callback execution failed!");
+        LOGE(TAG, "Out of memory - Callback execution failed!");
         return;
     }
 
@@ -68,9 +68,9 @@ static void print_peer_cert_info(const mbedtls_ssl_context *ssl)
     cert = mbedtls_ssl_get_peer_cert(ssl);
     if (cert != NULL) {
         mbedtls_x509_crt_info((char *) buf, buf_size - 1, "    ", cert);
-        ESP_LOGI(TAG, "Peer certificate info:\n%s", buf);
+        LOGI(TAG, "Peer certificate info:\n%s", buf);
     } else {
-        ESP_LOGW(TAG, "Could not obtain the peer certificate!");
+        LOGW(TAG, "Could not obtain the peer certificate!");
     }
 
     free(buf);
@@ -91,48 +91,48 @@ static void print_peer_cert_info(const mbedtls_ssl_context *ssl)
  */
 static void https_server_user_callback(esp_https_server_user_cb_arg_t *user_cb)
 {
-    ESP_LOGI(TAG, "User callback invoked!");
+    LOGI(TAG, "User callback invoked!");
 #ifdef CONFIG_ESP_TLS_USING_MBEDTLS
     mbedtls_ssl_context *ssl_ctx = NULL;
 #endif
     switch(user_cb->user_cb_state) {
         case HTTPD_SSL_USER_CB_SESS_CREATE:
-            ESP_LOGD(TAG, "At session creation");
+            LOGD(TAG, "At session creation");
 
             // Logging the socket FD
             int sockfd = -1;
             esp_err_t esp_ret;
             esp_ret = esp_tls_get_conn_sockfd(user_cb->tls, &sockfd);
             if (esp_ret != ESP_OK) {
-                ESP_LOGE(TAG, "Error in obtaining the sockfd from tls context");
+                LOGE(TAG, "Error in obtaining the sockfd from tls context");
                 break;
             }
-            ESP_LOGI(TAG, "Socket FD: %d", sockfd);
+            LOGI(TAG, "Socket FD: %d", sockfd);
 #ifdef CONFIG_ESP_TLS_USING_MBEDTLS
             ssl_ctx = (mbedtls_ssl_context *) esp_tls_get_ssl_context(user_cb->tls);
             if (ssl_ctx == NULL) {
-                ESP_LOGE(TAG, "Error in obtaining ssl context");
+                LOGE(TAG, "Error in obtaining ssl context");
                 break;
             }
             // Logging the current ciphersuite
-            ESP_LOGI(TAG, "Current Ciphersuite: %s", mbedtls_ssl_get_ciphersuite(ssl_ctx));
+            LOGI(TAG, "Current Ciphersuite: %s", mbedtls_ssl_get_ciphersuite(ssl_ctx));
 #endif
             break;
 
         case HTTPD_SSL_USER_CB_SESS_CLOSE:
-            ESP_LOGD(TAG, "At session close");
+            LOGD(TAG, "At session close");
 #ifdef CONFIG_ESP_TLS_USING_MBEDTLS
             // Logging the peer certificate
             ssl_ctx = (mbedtls_ssl_context *) esp_tls_get_ssl_context(user_cb->tls);
             if (ssl_ctx == NULL) {
-                ESP_LOGE(TAG, "Error in obtaining ssl context");
+                LOGE(TAG, "Error in obtaining ssl context");
                 break;
             }
             print_peer_cert_info(ssl_ctx);
 #endif
             break;
         default:
-            ESP_LOGE(TAG, "Illegal state!");
+            LOGE(TAG, "Illegal state!");
             return;
     }
 }
@@ -149,7 +149,7 @@ static httpd_handle_t start_webserver(void)
     httpd_handle_t server = NULL;
 
     // Start the httpd server
-    ESP_LOGI(TAG, "Starting server");
+    LOGI(TAG, "Starting server");
 
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
 
@@ -199,12 +199,12 @@ static httpd_handle_t start_webserver(void)
 #endif
     esp_err_t ret = httpd_ssl_start(&server, &conf);
     if (ESP_OK != ret) {
-        ESP_LOGI(TAG, "Error starting server!");
+        LOGI(TAG, "Error starting server!");
         return NULL;
     }
 
     // Set URI handlers
-    ESP_LOGI(TAG, "Registering URI handlers");
+    LOGI(TAG, "Registering URI handlers");
     httpd_register_uri_handler(server, &root);
     return server;
 }
@@ -223,7 +223,7 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
         if (stop_webserver(*server) == ESP_OK) {
             *server = NULL;
         } else {
-            ESP_LOGE(TAG, "Failed to stop https server");
+            LOGE(TAG, "Failed to stop https server");
         }
     }
 }

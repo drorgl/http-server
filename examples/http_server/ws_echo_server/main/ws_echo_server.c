@@ -9,7 +9,7 @@
 
 #include <esp_wifi.h>
 #include <esp_event.h>
-#include <esp_log.h>
+#include <log.h>
 #include <esp_system.h>
 #include <nvs_flash.h>
 #include <sys/param.h>
@@ -70,18 +70,18 @@ static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
 #ifdef CONFIG_EXAMPLE_ENABLE_WS_PRE_HANDSHAKE_CB
 static esp_err_t ws_pre_handshake_cb(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "=== ws_pre_handshake_cb called ===");
+    LOGI(TAG, "=== ws_pre_handshake_cb called ===");
 
     // Get the URI with query string
     const char *uri = req->uri;
-    ESP_LOGI(TAG, "Requested URI: %s", uri ? uri : "NULL");
+    LOGI(TAG, "Requested URI: %s", uri ? uri : "NULL");
 
     // Check if the query string contains token=valid
     if (uri && strstr(uri, "token=valid") != NULL) {
-        ESP_LOGI(TAG, "Valid token found, accepting handshake");
+        LOGI(TAG, "Valid token found, accepting handshake");
         return ESP_OK;
     } else {
-        ESP_LOGI(TAG, "No valid token found, rejecting handshake");
+        LOGI(TAG, "No valid token found, rejecting handshake");
         return ESP_FAIL;
     }
 }
@@ -94,7 +94,7 @@ static esp_err_t ws_pre_handshake_cb(httpd_req_t *req)
 static esp_err_t echo_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
-        ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+        LOGI(TAG, "Handshake done, the new connection was opened");
         return ESP_OK;
     }
     httpd_ws_frame_t ws_pkt;
@@ -104,28 +104,28 @@ static esp_err_t echo_handler(httpd_req_t *req)
     /* Set max_len = 0 to get the frame len */
     esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
+        LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
         return ret;
     }
-    ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
+    LOGI(TAG, "frame len is %d", ws_pkt.len);
     if (ws_pkt.len) {
         /* ws_pkt.len + 1 is for NULL termination as we are expecting a string */
         buf = calloc(1, ws_pkt.len + 1);
         if (buf == NULL) {
-            ESP_LOGE(TAG, "Failed to calloc memory for buf");
+            LOGE(TAG, "Failed to calloc memory for buf");
             return ESP_ERR_NO_MEM;
         }
         ws_pkt.payload = buf;
         /* Set max_len = ws_pkt.len to get the frame payload */
         ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
         if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
+            LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
             free(buf);
             return ret;
         }
-        ESP_LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
+        LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
     }
-    ESP_LOGI(TAG, "Packet type: %d", ws_pkt.type);
+    LOGI(TAG, "Packet type: %d", ws_pkt.type);
     if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
         ws_pkt.payload != NULL &&
         strcmp((char*)ws_pkt.payload,"Trigger async") == 0) {
@@ -135,7 +135,7 @@ static esp_err_t echo_handler(httpd_req_t *req)
 
     ret = httpd_ws_send_frame(req, &ws_pkt);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+        LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
     }
     free(buf);
     return ret;
@@ -167,16 +167,16 @@ static httpd_handle_t start_webserver(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     // Start the httpd server
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+    LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
         // Registering the ws handler
-        ESP_LOGI(TAG, "Registering URI handlers");
+        LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &ws);
         httpd_register_uri_handler(server, &ws_auth);
         return server;
     }
 
-    ESP_LOGI(TAG, "Error starting server!");
+    LOGI(TAG, "Error starting server!");
     return NULL;
 }
 
@@ -191,11 +191,11 @@ static void disconnect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server) {
-        ESP_LOGI(TAG, "Stopping webserver");
+        LOGI(TAG, "Stopping webserver");
         if (stop_webserver(*server) == ESP_OK) {
             *server = NULL;
         } else {
-            ESP_LOGE(TAG, "Failed to stop http server");
+            LOGE(TAG, "Failed to stop http server");
         }
     }
 }
@@ -205,7 +205,7 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 {
     httpd_handle_t* server = (httpd_handle_t*) arg;
     if (*server == NULL) {
-        ESP_LOGI(TAG, "Starting webserver");
+        LOGI(TAG, "Starting webserver");
         *server = start_webserver();
     }
 }

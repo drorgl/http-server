@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#include <esp_log.h>
+#include "log.h"
 #include <esp_system.h>
 #include <esp_http_server.h>
 #include "esp_check.h"
@@ -22,7 +22,7 @@ struct async_resp_arg {
 static esp_err_t hello_get_handler(httpd_req_t *req)
 {
 #define STR "Hello World!"
-    ESP_LOGI(TAG, "Free Stack for server task: '%d'", uxTaskGetStackHighWaterMark(NULL));
+    LOGI(TAG, "Free Stack for server task: '%d'", uxTaskGetStackHighWaterMark(NULL));
     httpd_resp_send(req, STR, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 #undef STR
@@ -41,29 +41,29 @@ static esp_err_t test_header_get_handler(httpd_req_t *req)
     if (buf_len > 0) {
         buf = malloc(++buf_len);
         if (!buf) {
-            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
             return ESP_ERR_NO_MEM;
         }
         /* Copy null terminated value string into buffer */
         if (httpd_req_get_hdr_value_str(req, "Header1", buf, buf_len) == ESP_OK) {
-            ESP_LOGI(TAG, "Header1 content: %s", buf);
+            LOGI(TAG, "Header1 content: %s", buf);
             if (strcmp("Value1", buf) != 0) {
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Wrong value of Header1 received");
                 free(buf);
                 return ESP_ERR_INVALID_ARG;
             } else {
-                ESP_LOGI(TAG, "Expected value and received value matched for Header1");
+                LOGI(TAG, "Expected value and received value matched for Header1");
             }
         } else {
-            ESP_LOGE(TAG, "Error in getting value of Header1");
+            LOGE(TAG, "Error in getting value of Header1");
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of Header1");
             free(buf);
             return ESP_FAIL;
         }
         free(buf);
     } else {
-        ESP_LOGE(TAG, "Header1 not found");
+        LOGE(TAG, "Header1 not found");
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Header1 not found");
         return ESP_ERR_NOT_FOUND;
     }
@@ -72,29 +72,29 @@ static esp_err_t test_header_get_handler(httpd_req_t *req)
     if (buf_len > 0) {
         buf = malloc(++buf_len);
         if (!buf) {
-            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+            LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
             return ESP_ERR_NO_MEM;
         }
         /* Copy null terminated value string into buffer */
         if (httpd_req_get_hdr_value_str(req, "Header3", buf, buf_len) == ESP_OK) {
-            ESP_LOGI(TAG, "Header3 content: %s", buf);
+            LOGI(TAG, "Header3 content: %s", buf);
             if (strcmp("Value3", buf) != 0) {
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Wrong value of Header3 received");
                 free(buf);
                 return ESP_ERR_INVALID_ARG;
             } else {
-                ESP_LOGI(TAG, "Expected value and received value matched for Header3");
+                LOGI(TAG, "Expected value and received value matched for Header3");
             }
         } else {
-            ESP_LOGE(TAG, "Error in getting value of Header3");
+            LOGE(TAG, "Error in getting value of Header3");
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Error in getting value of Header3");
             free(buf);
             return ESP_FAIL;
         }
         free(buf);
     } else {
-        ESP_LOGE(TAG, "Header3 not found");
+        LOGE(TAG, "Header3 not found");
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Header3 not found");
         return ESP_ERR_NOT_FOUND;
     }
@@ -102,15 +102,15 @@ static esp_err_t test_header_get_handler(httpd_req_t *req)
     buf_len = httpd_req_get_hdr_value_len(req, "Header2");
     buf = malloc(++buf_len);
     if (!buf) {
-        ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
+        LOGE(TAG, "Failed to allocate memory of %d bytes!", buf_len);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
         return ESP_ERR_NO_MEM;
     }
     if (httpd_req_get_hdr_value_str(req, "Header2", buf, buf_len) == ESP_OK) {
-        ESP_LOGI(TAG, "Header2 content: %s", buf);
+        LOGI(TAG, "Header2 content: %s", buf);
         httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
     } else {
-        ESP_LOGE(TAG, "Header2 not found");
+        LOGE(TAG, "Header2 not found");
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Header2 not found");
         return ESP_FAIL;
     }
@@ -138,14 +138,14 @@ static esp_err_t hello_status_get_handler(httpd_req_t *req)
 
 static esp_err_t echo_post_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "/echo handler read content length %d", req->content_len);
+    LOGI(TAG, "/echo handler read content length %d", req->content_len);
 
     char*  buf = malloc(req->content_len + 1);
     size_t off = 0;
     int    ret;
 
     if (!buf) {
-        ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", req->content_len + 1);
+        LOGE(TAG, "Failed to allocate memory of %d bytes!", req->content_len + 1);
         httpd_resp_send_500(req);
         return ESP_FAIL;
     }
@@ -161,12 +161,12 @@ static esp_err_t echo_post_handler(httpd_req_t *req)
             return ESP_FAIL;
         }
         off += ret;
-        ESP_LOGI(TAG, "/echo handler recv length %d", ret);
+        LOGI(TAG, "/echo handler recv length %d", ret);
     }
     buf[off] = '\0';
 
     if (req->content_len < 128) {
-        ESP_LOGI(TAG, "/echo handler read %s", buf);
+        LOGI(TAG, "/echo handler read %s", buf);
     }
 
     /* Search for Custom header field */
@@ -176,7 +176,7 @@ static esp_err_t echo_post_handler(httpd_req_t *req)
         /* Read Custom header value */
         req_hdr = malloc(hdr_len + 1);
         if (!req_hdr) {
-            ESP_LOGE(TAG, "Failed to allocate memory of %d bytes!", hdr_len + 1);
+            LOGE(TAG, "Failed to allocate memory of %d bytes!", hdr_len + 1);
             httpd_resp_send_500(req);
             return ESP_FAIL;
         }
@@ -193,7 +193,7 @@ static esp_err_t echo_post_handler(httpd_req_t *req)
 
 static void adder_free_func(void *ctx)
 {
-    ESP_LOGI(TAG, "Custom Free Context function called");
+    LOGI(TAG, "Custom Free Context function called");
     free(ctx);
 }
 
@@ -217,10 +217,10 @@ static esp_err_t adder_post_handler(httpd_req_t *req)
 
     buf[ret] = '\0';
     int val = atoi(buf);
-    ESP_LOGI(TAG, "/adder handler read %d", val);
+    LOGI(TAG, "/adder handler read %d", val);
 
     if (! req->sess_ctx) {
-        ESP_LOGI(TAG, "/adder allocating new session");
+        LOGI(TAG, "/adder allocating new session");
         req->sess_ctx = malloc(sizeof(int));
         ESP_RETURN_ON_FALSE(req->sess_ctx, ESP_ERR_NO_MEM, TAG, "Failed to allocate sess_ctx");
         req->free_ctx = adder_free_func;
@@ -252,7 +252,7 @@ static esp_err_t leftover_data_post_handler(httpd_req_t *req)
     }
 
     buf[ret] = '\0';
-    ESP_LOGI(TAG, "leftover data handler read %s", buf);
+    LOGI(TAG, "leftover data handler read %s", buf);
     httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
@@ -268,7 +268,7 @@ static void generate_async_resp(void *arg)
                            "Content-Length: %d\r\n"
 #define STR "Hello Double World!"
 
-    ESP_LOGI(TAG, "Executing queued work fd : %d", fd);
+    LOGI(TAG, "Executing queued work fd : %d", fd);
 
     snprintf(buf, sizeof(buf), HTTPD_HDR_STR,
          strlen(STR));
@@ -295,7 +295,7 @@ static esp_err_t async_get_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Queuing work fd : %d", resp_arg->fd);
+    LOGI(TAG, "Queuing work fd : %d", resp_arg->fd);
     httpd_queue_work(req->handle, generate_async_resp, resp_arg);
     return ESP_OK;
 #undef STR
@@ -355,15 +355,15 @@ static const int basic_handlers_no = sizeof(basic_handlers)/sizeof(httpd_uri_t);
 static void register_basic_handlers(httpd_handle_t hd)
 {
     int i;
-    ESP_LOGI(TAG, "Registering basic handlers");
-    ESP_LOGI(TAG, "No of handlers = %d", basic_handlers_no);
+    LOGI(TAG, "Registering basic handlers");
+    LOGI(TAG, "No of handlers = %d", basic_handlers_no);
     for (i = 0; i < basic_handlers_no; i++) {
         if (httpd_register_uri_handler(hd, &basic_handlers[i]) != ESP_OK) {
-            ESP_LOGW(TAG, "register uri failed for %d", i);
+            LOGW(TAG, "register uri failed for %d", i);
             return;
         }
     }
-    ESP_LOGI(TAG, "Success");
+    LOGI(TAG, "Success");
 }
 
 static httpd_handle_t test_httpd_start(void)
@@ -379,12 +379,12 @@ static httpd_handle_t test_httpd_start(void)
     config.max_open_sockets = (CONFIG_LWIP_MAX_SOCKETS - 3);
 
     if (httpd_start(&hd, &config) == ESP_OK) {
-        ESP_LOGI(TAG, "Started HTTP server on port: '%d'", config.server_port);
-        ESP_LOGI(TAG, "Max URI handlers: '%d'", config.max_uri_handlers);
-        ESP_LOGI(TAG, "Max Open Sessions: '%d'", config.max_open_sockets);
-        ESP_LOGI(TAG, "Max Header Length: '%d'", CONFIG_HTTPD_MAX_REQ_HDR_LEN);
-        ESP_LOGI(TAG, "Max URI Length: '%d'", CONFIG_HTTPD_MAX_URI_LEN);
-        ESP_LOGI(TAG, "Max Stack Size: '%d'", config.stack_size);
+        LOGI(TAG, "Started HTTP server on port: '%d'", config.server_port);
+        LOGI(TAG, "Max URI handlers: '%d'", config.max_uri_handlers);
+        LOGI(TAG, "Max Open Sessions: '%d'", config.max_open_sockets);
+        LOGI(TAG, "Max Header Length: '%d'", CONFIG_HTTPD_MAX_REQ_HDR_LEN);
+        LOGI(TAG, "Max URI Length: '%d'", CONFIG_HTTPD_MAX_URI_LEN);
+        LOGI(TAG, "Max Stack Size: '%d'", config.stack_size);
         return hd;
     }
     return NULL;
@@ -394,7 +394,7 @@ static void test_httpd_stop(httpd_handle_t hd)
 {
     httpd_stop(hd);
     post_stop_mem = esp_get_free_heap_size();
-    ESP_LOGI(TAG, "HTTPD Stop: Current free memory: %d", post_stop_mem);
+    LOGI(TAG, "HTTPD Stop: Current free memory: %d", post_stop_mem);
 }
 
 httpd_handle_t start_tests(void)
@@ -408,6 +408,6 @@ httpd_handle_t start_tests(void)
 
 void stop_tests(httpd_handle_t hd)
 {
-    ESP_LOGI(TAG, "Stopping httpd");
+    LOGI(TAG, "Stopping httpd");
     test_httpd_stop(hd);
 }

@@ -7,7 +7,7 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 
-#include <esp_log.h>
+#include <log.h>
 #include <esp_system.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -115,24 +115,24 @@ static void keep_alive_task(void* arg)
             switch (client_action.type) {
                 case CLIENT_FD_ADD:
                     if (!add_new_client(keep_alive_storage, client_action.fd)) {
-                        ESP_LOGE(TAG, "Cannot add new client");
+                        LOGE(TAG, "Cannot add new client");
                     }
                     break;
                 case CLIENT_FD_REMOVE:
                     if (!remove_client(keep_alive_storage, client_action.fd)) {
-                        ESP_LOGE(TAG, "Cannot remove client fd:%d", client_action.fd);
+                        LOGE(TAG, "Cannot remove client fd:%d", client_action.fd);
                     }
                     break;
                 case CLIENT_UPDATE:
                     if (!update_client(keep_alive_storage, client_action.fd, client_action.last_seen)) {
-                        ESP_LOGE(TAG, "Cannot find client fd:%d", client_action.fd);
+                        LOGE(TAG, "Cannot find client fd:%d", client_action.fd);
                     }
                     break;
                 case STOP_TASK:
                     run_task = false;
                     break;
                 default:
-                    ESP_LOGE(TAG, "Unexpected client action");
+                    LOGE(TAG, "Unexpected client action");
                     break;
             }
         } else {
@@ -140,9 +140,9 @@ static void keep_alive_task(void* arg)
                 for (int i=0; i<keep_alive_storage->max_clients; ++i) {
                     if (keep_alive_storage->clients[i].type == CLIENT_ACTIVE) {
                         if (keep_alive_storage->clients[i].last_seen + keep_alive_storage->keep_alive_period_ms <= _tick_get_ms()) {
-                            ESP_LOGD(TAG, "Haven't seen the client (fd=%d) for a while", keep_alive_storage->clients[i].fd);
+                            LOGD(TAG, "Haven't seen the client (fd=%d) for a while", keep_alive_storage->clients[i].fd);
                             if (keep_alive_storage->clients[i].last_seen + keep_alive_storage->not_alive_after_ms <= _tick_get_ms()) {
-                                ESP_LOGE(TAG, "Client (fd=%d) not alive!",  keep_alive_storage->clients[i].fd);
+                                LOGE(TAG, "Client (fd=%d) not alive!",  keep_alive_storage->clients[i].fd);
                                 keep_alive_storage->client_not_alive_cb(keep_alive_storage, keep_alive_storage->clients[i].fd);
                             } else {
                                 keep_alive_storage->check_client_alive_cb(keep_alive_storage, keep_alive_storage->clients[i].fd);

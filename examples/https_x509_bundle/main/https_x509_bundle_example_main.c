@@ -28,7 +28,7 @@
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "esp_log.h"
+#include "LOG.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "protocol_examples_common.h"
@@ -69,7 +69,7 @@ static void https_get_task(void *pvParameters)
 {
     while (1) {
         int conn_count = 0;
-        ESP_LOGI(TAG, "Connecting to %d URLs", MAX_URLS);
+        LOGI(TAG, "Connecting to %d URLs", MAX_URLS);
 
         for (int i = 0; i < MAX_URLS; i++) {
             esp_tls_cfg_t cfg = {
@@ -78,15 +78,15 @@ static void https_get_task(void *pvParameters)
 
             esp_tls_t *tls = esp_tls_init();
             if (!tls) {
-                ESP_LOGE(TAG, "Failed to allocate esp_tls handle!");
+                LOGE(TAG, "Failed to allocate esp_tls handle!");
                 goto end;
             }
 
             if (esp_tls_conn_http_new_sync(web_urls[i], &cfg, tls) == 1) {
-                ESP_LOGI(TAG, "Connection established to %s", web_urls[i]);
+                LOGI(TAG, "Connection established to %s", web_urls[i]);
                 conn_count++;
             } else {
-                ESP_LOGE(TAG, "Could not connect to %s", web_urls[i]);
+                LOGE(TAG, "Could not connect to %s", web_urls[i]);
             }
 
             esp_tls_conn_destroy(tls);
@@ -94,8 +94,8 @@ end:
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
 
-        ESP_LOGI(TAG, "Completed %d connections", conn_count);
-        ESP_LOGI(TAG, "Starting over again...");
+        LOGI(TAG, "Completed %d connections", conn_count);
+        LOGI(TAG, "Starting over again...");
     }
 }
 
