@@ -22,7 +22,7 @@
 #include <esp_err.h>
 #include <unistd.h>
 
-#include <esp_http_server.h>
+#include <http_server.h>
 #endif
 
 #include "esp_httpd_priv.h"

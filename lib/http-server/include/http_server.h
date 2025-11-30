@@ -25,7 +25,7 @@
 #endif
 
 #include <http_parser.h>
-#include "esp_http_server_config.h"
+#include "http_server_config.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
@@ -93,35 +93,6 @@ initializer that should be kept in sync
         .close_fn = NULL,                               \
         .uri_match_fn = NULL                            \
 }
-
-// #define HTTPD_DEFAULT_CONFIG() {                        \
-//         .task_priority      = tskIDLE_PRIORITY+5,       \
-//         .stack_size         = 4096,                     \
-//         .core_id            = tskNO_AFFINITY,           \
-//         .task_caps          = (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),       \
-//         .server_port        = 80,                       \
-//         .ctrl_port          = ESP_HTTPD_DEF_CTRL_PORT,  \
-//         .max_open_sockets   = 7,                        \
-//         .max_uri_handlers   = 8,                        \
-//         .max_resp_headers   = 8,                        \
-//         .backlog_conn       = 5,                        \
-//         .lru_purge_enable   = false,                    \
-//         .recv_wait_timeout  = 5,                        \
-//         .send_wait_timeout  = 5,                        \
-//         .global_user_ctx = NULL,                        \
-//         .global_user_ctx_free_fn = NULL,                \
-//         .global_transport_ctx = NULL,                   \
-//         .global_transport_ctx_free_fn = NULL,           \
-//         .enable_so_linger = false,                      \
-//         .linger_timeout = 0,                            \
-//         .keep_alive_enable = false,                     \
-//         .keep_alive_idle = 0,                           \
-//         .keep_alive_interval = 0,                       \
-//         .keep_alive_count = 0,                          \
-//         .open_fn = NULL,                                \
-//         .close_fn = NULL,                               \
-//         .uri_match_fn = NULL                            \
-// }
 
 #define ESP_ERR_HTTPD_BASE              (0xb000)                    /*!< Starting number of HTTPD error codes */
 #define ESP_ERR_HTTPD_HANDLERS_FULL     (ESP_ERR_HTTPD_BASE +  1)   /*!< All slots for registering URI handlers have been consumed */

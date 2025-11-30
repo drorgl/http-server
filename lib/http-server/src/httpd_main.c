@@ -29,7 +29,7 @@
 #include <assert.h>
 #include <netinet/tcp.h>
 
-#include <esp_http_server.h>
+#include <http_server.h>
 
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
 #include "freertos/semphr.h"
@@ -395,7 +395,7 @@ static esp_err_t httpd_server(struct httpd_data *hd)
 }
 
 /* The main HTTPD thread */
-static void* httpd_thread(void *arg)
+static void httpd_thread(void *arg)
 {
     int ret;
     struct httpd_data *hd = (struct httpd_data *) arg;

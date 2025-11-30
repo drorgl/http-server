@@ -1,5 +1,5 @@
 #include "http_test_client.h"
-#include <esp_http_server.h>
+#include <http_server.h>
 #include <stdlib.h> // For malloc, free
 #include <string.h> // For memset, strlen, strncpy
 #include <stdio.h>  // For snprintf

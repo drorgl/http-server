@@ -1,4 +1,4 @@
-#include "event_group.h"
+#include "generic_event_group.h"
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>

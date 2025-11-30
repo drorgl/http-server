@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <esp_system.h>
-#include <esp_http_server.h>
+#include <http_server.h>
 
 #include "unity.h"
 #include "test_utils.h"

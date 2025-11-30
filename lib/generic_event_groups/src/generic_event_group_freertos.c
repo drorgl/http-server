@@ -1,6 +1,7 @@
-#include "event_group.h"
+#include "generic_event_group.h"
 
 #ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 
 event_group_handle_t event_group_create(void) {

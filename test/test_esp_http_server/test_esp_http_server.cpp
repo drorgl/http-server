@@ -3,10 +3,11 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
-#else
+#elif defined(__linux__)
 #include <signal.h>
-#include <stdio.h>
 #endif
+
+#include <stdio.h>
 
 #include "test_server_lifecycle.h"
 #include "test_uri_handlers.h"
@@ -49,12 +50,15 @@ int test_esp_http_server(){
     
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0); // Disable buffering for stdout
     setvbuf(stderr, NULL, _IONBF, 0); // Disable buffering for stderr
 
-#ifndef _WIN32
+#if defined(__linux__)
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
         perror("Failed to set SIGPIPE handler");
         // Handle initialization failure
@@ -69,3 +73,6 @@ void app_main(void)
 {
     main();
 }
+#ifdef __cplusplus
+}
+#endif

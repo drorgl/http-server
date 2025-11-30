@@ -22,14 +22,14 @@ typedef TaskHandle_t othread_t;
 
 static inline int httpd_os_thread_create(othread_t *thread,
                                  const char *name, uint16_t stacksize, int prio,
-                                 void * (*thread_routine)(void *arg), void *arg,
+                                 void  (*thread_routine)(void *arg), void *arg,
                                  uint8_t core_id, uint32_t caps)
 {
     pthread_attr_t thread_attr;
     pthread_attr_init(&thread_attr);
     pthread_attr_setstacksize(&thread_attr, stacksize);
     pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED);
-    int ret = pthread_create((pthread_t *)thread, &thread_attr, thread_routine, arg);
+    int ret = pthread_create((pthread_t *)thread, &thread_attr,(void *(*)(void *)) thread_routine, arg);
     if (ret == 0) {
         return OS_SUCCESS;
     }

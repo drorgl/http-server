@@ -3,7 +3,7 @@
 
 #include "log.h"
 #include <esp_system.h>
-#include <esp_http_server.h>
+#include <http_server.h>
 #include "esp_check.h"
 
 #include "tests.h"

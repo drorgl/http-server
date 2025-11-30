@@ -6,8 +6,8 @@
 
 #include <log.h>
 #include "esp_httpd_priv.h"
-#include <esp_http_server.h>
-#include "event_group.h"
+#include <http_server.h>
+#include "generic_event_group.h"
 #include <sha1.h>
 #include <base64_codec.h>
 #include <malloc.h>

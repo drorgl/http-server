@@ -13,7 +13,7 @@
 
 #include <log.h>
 #include "esp_httpd_priv.h"
-#include "esp_http_server.h"
+#include "http_server.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <malloc.h>

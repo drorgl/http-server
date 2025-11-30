@@ -10,8 +10,8 @@
 #include <esp_err.h>
 
 
-#include <esp_http_server.h>
-#include "osal.h"
+#include <http_server.h>
+#include "port/esp32/osal.h"
 #endif
 
 #include <string.h>

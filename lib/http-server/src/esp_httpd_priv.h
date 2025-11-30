@@ -10,7 +10,7 @@
 
 #include <stdbool.h>
 
-#include "esp_http_server.h"
+#include "http_server.h"
 
 #ifdef ESP_PLATFORM
 #include <sys/socket.h>

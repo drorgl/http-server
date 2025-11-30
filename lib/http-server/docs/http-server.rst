@@ -106,7 +106,7 @@ Event Handling
 
 ESP HTTP server has various events for which a handler can be triggered by :doc:`the Event Loop library <../system/esp_event>` when the particular event occurs. The handler has to be registered using :cpp:func:`esp_event_handler_register`. This helps in event handling for ESP HTTP server.
 
-:cpp:enum:`esp_http_server_event_id_t` has all the events which can happen for ESP HTTP server.
+:cpp:enum:`http_server_event_id_t` has all the events which can happen for ESP HTTP server.
 
 Expected data type for different ESP HTTP server events in event loop:
 
@@ -115,8 +115,8 @@ Expected data type for different ESP HTTP server events in event loop:
     - HTTP_SERVER_EVENT_ON_CONNECTED    :   ``int``
     - HTTP_SERVER_EVENT_ON_HEADER       :   ``int``
     - HTTP_SERVER_EVENT_HEADERS_SENT    :   ``int``
-    - HTTP_SERVER_EVENT_ON_DATA         :   ``esp_http_server_event_data``
-    - HTTP_SERVER_EVENT_SENT_DATA       :   ``esp_http_server_event_data``
+    - HTTP_SERVER_EVENT_ON_DATA         :   ``http_server_event_data``
+    - HTTP_SERVER_EVENT_SENT_DATA       :   ``http_server_event_data``
     - HTTP_SERVER_EVENT_DISCONNECTED    :   ``int``
     - HTTP_SERVER_EVENT_STOP            :   ``NULL``
 
@@ -178,5 +178,5 @@ In this example, the `my_uri_handler` function handles requests to the `/my_uri`
 API Reference
 -------------
 
-.. include-build-file:: inc/esp_http_server.inc
+.. include-build-file:: inc/http_server.inc
     

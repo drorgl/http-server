@@ -29,6 +29,10 @@
 #include "log.h"
 #include "log_private.h"
 
+#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32H2
+#include "rom/ets_sys.h"
+#endif
+
 
 // Maximum time to wait for the mutex in a logging statement.
 #define MAX_MUTEX_WAIT_MS 10

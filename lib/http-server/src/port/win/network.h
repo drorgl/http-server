@@ -16,7 +16,9 @@
 
 #define CONFIG_LWIP_IPV4 1
 
+#ifdef _WIN32
 int inet_aton(const char *cp, struct in_addr *addr);
+#endif
 
 /**
  * @brief Set socket options
