@@ -19,7 +19,7 @@
 #include "esp_httpd_priv.h"
 #include <http_server.h>
 
-#include <LOG.h>
+#include <log.h>
 
 static const char *TAG = "httpd_txrx";
 
