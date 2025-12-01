@@ -31,36 +31,39 @@
 
 #define MAX_MUTEX_WAIT_MS 10
 
-static sem_t mutex = NULL;
+static sem_t mutex;
+static pthread_once_t once_control = PTHREAD_ONCE_INIT;
+
+static void init_mutex(void)
+{
+    sem_init(&mutex, 0, 1);
+}
 
 void log_impl_lock(void)
 {
-    if (!mutex)
-    {
-        sem_init(&mutex,0,1);
-    }
+    pthread_once(&once_control, init_mutex);
     sem_wait(&mutex);
 }
 
-
 int sem_timedwait_ms(sem_t *sem, int milliseconds)
 {
-    if (!mutex)
-    {
-        sem_init(&mutex,0,1);
+    pthread_once(&once_control, init_mutex);
+
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
+        return 0; // Error
     }
 
-    struct timespec ts = {
-        0,(1000 * milliseconds)
-    };
-    // if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
-    //     printf("clock_gettime\r\n");
-    // }
-    //ts.tv_sec += atoi(argv[2]);
-    // ts.tv_nsec += (1000 * milliseconds);
+    ts.tv_sec += milliseconds / 1000;
+    ts.tv_nsec += (milliseconds % 1000) * 1000000;
 
-    int result = sem_timedwait(sem, &ts) ;
-    // printf("[semt %d %d]", result, errno);
+    // Normalize timespec
+    if (ts.tv_nsec >= 1000000000) {
+        ts.tv_sec++;
+        ts.tv_nsec -= 1000000000;
+    }
+
+    int result = sem_timedwait(sem, &ts);
     return result == 0;
 }
 
