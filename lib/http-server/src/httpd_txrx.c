@@ -740,7 +740,12 @@ int httpd_default_send(httpd_handle_t hd, int sockfd, const char *buf, size_t bu
         return HTTPD_SOCK_ERR_INVALID;
     }
 
-    int ret = send(sockfd, buf, buf_len, flags);
+    int ret;
+#ifdef _WIN32
+    ret = send(sockfd, buf, buf_len, flags);
+#else
+    ret = send(sockfd, buf, buf_len, flags | MSG_NOSIGNAL);
+#endif
     if (ret < 0) {
         return httpd_sock_err("send", sockfd);
     }
