@@ -464,12 +464,88 @@ void given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_ret
     httpd_stop(handle);
 }
 
+/**
+ * Test: given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails
+ *
+ * Purpose: Verify that the server handshake fails when the subprotocol is too long for the response buffer.
+ * Expected: The server should fail to send a handshake response and close the connection.
+ */
+void given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails(void)
+{
+    // Given: A running server with a WebSocket handler configured with a very long subprotocol
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9021; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    const char *long_subprotocol = "this-is-a-very-long-subprotocol-that-will-certainly-overflow-the-buffer";
+
+    httpd_uri_t ws_uri = {
+        .uri        = "/ws_long_subprotocol",
+        .method     = HTTP_GET,
+        .handler    = ws_test_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .supported_subprotocol = long_subprotocol
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
+
+    // When: A client connects and sends a WebSocket upgrade request with the long subprotocol
+    struct sockaddr_in serv_addr;
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char request_buffer[512];
+    snprintf(request_buffer, sizeof(request_buffer),
+             "GET /ws_long_subprotocol HTTP/1.1\r\n"
+             "Host: localhost:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "Sec-WebSocket-Protocol: %s\r\n\r\n",
+             config.server_port, client_key, long_subprotocol);
+
+    send(sockfd, request_buffer, strlen(request_buffer), 0);
+
+    // Then: The server should close the connection without sending a response
+    char response_buffer[1024] = {0};
+    httpd_os_thread_sleep(200); // Give server time to process and fail
+
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+    int recv_ret = recv(sockfd, response_buffer, sizeof(response_buffer) - 1, 0);
+    
+    // Assert that the connection was closed by the server (recv returns 0 or -1)
+    TEST_ASSERT_LESS_OR_EQUAL(0, recv_ret);
+
+    // Cleanup
+#ifdef _WIN32
+    closesocket(sockfd);
+#else
+    close(sockfd);
+#endif
+    httpd_stop(handle);
+}
+
 int test_websocket(void) {
     // UNITY_BEGIN();
     RUN_TEST(given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds);
     RUN_TEST(given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchanged_correctly);
     RUN_TEST(given_ws_connection_when_client_sends_close_frame_then_server_responds_with_close_and_closes_connection);
     RUN_TEST(given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_returns_correct_client_type);
+    RUN_TEST(given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails);
     // return UNITY_END();
     test_websocket_upgrade_handshake();
     return 0;
