@@ -49,7 +49,7 @@ jobs:
 
       - name: Coverage Report Generation
         run: |
-          gcovr -v --add-tracefile ".pio/tests/*.json" --xml-pretty -o .reports/coverage.xml --markdown .reports/coverage.md --root . --exclude test/.* --exclude .pio/.*
+          gcovr -v --add-tracefile ".pio/tests/*.json" --xml-pretty -o .reports/coverage.xml --markdown .reports/coverage.md --root . --exclude test/.* --exclude .pio/.* --exclude lib/http-parser/.* --exclude lib/logger/.* --exclude lib/generic_event_groups/.* --exclude lib/hashing/.* --exclude lib/base64/.* --exclude lib/http-parser/bench.c --exclude lib/http-parser/contrib/.* --exclude lib/http-parser/test.c
           echo "## 📊 Code Coverage Report" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           cat .reports/coverage.md >> $GITHUB_STEP_SUMMARY
