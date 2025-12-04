@@ -20,6 +20,10 @@
 #include "http_test_client.h"
 #include "test_async_websocket.h"
 #include "test_async_requests.h"
+#include "test_session_context.h"
+#include "test_leftover_data.h"
+#include "test_async_work_queue.h"
+#include "test_empty_header.h"
 
 #define TAG "TEST_HTTPD_COORDINATOR"
 
@@ -50,7 +54,11 @@ int test_esp_http_server(){
         test_request_processing() | 
         test_websocket() | 
         test_async_websocket() | 
-        test_async_requests();
+        test_async_requests() |
+        test_session_context() |
+        test_leftover_data() |
+        test_async_work_queue() |
+        test_empty_header();
     
 }
 
