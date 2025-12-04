@@ -18,6 +18,7 @@
 #include "test_error_handling.h"
 #include "test_utilities.h"
 #include "http_test_client.h"
+#include "test_async_websocket.h"
 
 #define TAG "TEST_HTTPD_COORDINATOR"
 
@@ -46,7 +47,8 @@ int test_esp_http_server(){
         test_error_handling() | 
         test_response_handling() | 
         test_request_processing() | 
-        test_websocket();
+        test_websocket() | 
+        test_async_websocket();
     
 }
 
