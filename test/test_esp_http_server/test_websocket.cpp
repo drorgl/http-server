@@ -539,10 +539,158 @@ void given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_han
     httpd_stop(handle);
 }
 
+/**
+ * Test: given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds
+ *
+ * Purpose: Verify that WebSocket data frames with 16-bit length are sent and received correctly.
+ * Expected: The server echoes back the sent data, and the client receives it intact.
+ */
+void given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds(void)
+{
+    // Given: A running server with a registered WebSocket URI handler for data frames
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9022; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t ws_data_uri = {
+        .uri        = "/ws_data_16bit",
+        .method     = HTTP_GET,
+        .handler    = ws_data_frame_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_data_uri));
+
+    // When: A client connects and performs WebSocket handshake
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char expected_accept_key[33];
+    generate_ws_accept_key(client_key, expected_accept_key, sizeof(expected_accept_key));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_handshake(client, "/ws_data_16bit", "127.0.0.1", client_key, expected_accept_key, TEST_TIMEOUT_MS));
+
+    // Then: Client sends a frame with 16-bit length
+    const size_t payload_len = 256;
+    uint8_t *payload = (uint8_t *)malloc(payload_len);
+    TEST_ASSERT_NOT_NULL(payload);
+    for (size_t i = 0; i < payload_len; ++i) {
+        payload[i] = i % 256;
+    }
+
+    ws_test_frame_t frame;
+    memset(&frame, 0, sizeof(frame));
+    frame.type = WS_TYPE_BINARY;
+    frame.fin = true;
+    frame.masked = true;
+    frame.mask[0] = 0xDE;
+    frame.mask[1] = 0xAD;
+    frame.mask[2] = 0xBE;
+    frame.mask[3] = 0xEF;
+    frame.payload = payload;
+    frame.payload_len = payload_len;
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_send_frame(client, &frame, TEST_TIMEOUT_MS));
+
+    ws_test_frame_t received_frame;
+    memset(&received_frame, 0, sizeof(received_frame));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_recv_frame(client, &received_frame, TEST_TIMEOUT_MS));
+
+    TEST_ASSERT_EQUAL(WS_TYPE_BINARY, received_frame.type);
+    TEST_ASSERT_EQUAL(true, received_frame.fin);
+    TEST_ASSERT_EQUAL(payload_len, received_frame.payload_len);
+    TEST_ASSERT_NOT_NULL(received_frame.payload);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(payload, received_frame.payload, payload_len);
+
+    free(payload);
+    ws_test_client_free_frame(&received_frame);
+
+    // Cleanup
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds
+ *
+ * Purpose: Verify that WebSocket data frames with 64-bit length are sent and received correctly.
+ * Expected: The server echoes back the sent data, and the client receives it intact.
+ */
+void given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds(void)
+{
+    // Given: A running server with a registered WebSocket URI handler for data frames
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9023; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t ws_data_uri = {
+        .uri        = "/ws_data_64bit",
+        .method     = HTTP_GET,
+        .handler    = ws_data_frame_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_data_uri));
+
+    // When: A client connects and performs WebSocket handshake
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char expected_accept_key[33];
+    generate_ws_accept_key(client_key, expected_accept_key, sizeof(expected_accept_key));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_handshake(client, "/ws_data_64bit", "127.0.0.1", client_key, expected_accept_key, TEST_TIMEOUT_MS));
+
+    // Then: Client sends a frame with 64-bit length
+    const size_t payload_len = 65536;
+    uint8_t *payload = (uint8_t *)malloc(payload_len);
+    TEST_ASSERT_NOT_NULL(payload);
+    for (size_t i = 0; i < payload_len; ++i) {
+        payload[i] = i % 256;
+    }
+
+    ws_test_frame_t frame;
+    memset(&frame, 0, sizeof(frame));
+    frame.type = WS_TYPE_BINARY;
+    frame.fin = true;
+    frame.masked = true;
+    frame.mask[0] = 0xCA;
+    frame.mask[1] = 0xFE;
+    frame.mask[2] = 0xBA;
+    frame.mask[3] = 0xBE;
+    frame.payload = payload;
+    frame.payload_len = payload_len;
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_send_frame(client, &frame, TEST_TIMEOUT_MS * 10)); // Increase timeout for large payload
+
+    ws_test_frame_t received_frame;
+    memset(&received_frame, 0, sizeof(received_frame));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_recv_frame(client, &received_frame, TEST_TIMEOUT_MS * 10)); // Increase timeout for large payload
+
+    TEST_ASSERT_EQUAL(WS_TYPE_BINARY, received_frame.type);
+    TEST_ASSERT_EQUAL(true, received_frame.fin);
+    TEST_ASSERT_EQUAL(payload_len, received_frame.payload_len);
+    TEST_ASSERT_NOT_NULL(received_frame.payload);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(payload, received_frame.payload, payload_len);
+
+    free(payload);
+    ws_test_client_free_frame(&received_frame);
+
+    // Cleanup
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
 int test_websocket(void) {
     // UNITY_BEGIN();
     RUN_TEST(given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds);
     RUN_TEST(given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchanged_correctly);
+    RUN_TEST(given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds);
+    RUN_TEST(given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds);
     RUN_TEST(given_ws_connection_when_client_sends_close_frame_then_server_responds_with_close_and_closes_connection);
     RUN_TEST(given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_returns_correct_client_type);
     RUN_TEST(given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails);
