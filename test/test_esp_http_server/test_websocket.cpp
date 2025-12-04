@@ -685,6 +685,127 @@ void given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds(void
     httpd_stop(handle);
 }
 
+
+/**
+ * Test: given_ws_connection_when_client_sends_ping_then_server_responds_with_pong
+ *
+ * Purpose: Verify that the server automatically responds to a PING frame with a PONG frame.
+ * Expected: The client receives a PONG frame after sending a PING frame.
+ */
+void given_ws_connection_when_client_sends_ping_then_server_responds_with_pong(void)
+{
+    // Given: A running server with a registered WebSocket URI handler
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9024; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t ws_uri = {
+        .uri        = "/ws_ping_pong",
+        .method     = HTTP_GET,
+        .handler    = ws_test_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = false // Disable automatic handling by user handler, enable internal server handling
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
+
+    // When: A client connects, performs a handshake, and sends a PING frame
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char expected_accept_key[33];
+    generate_ws_accept_key(client_key, expected_accept_key, sizeof(expected_accept_key));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_handshake(client, "/ws_ping_pong", "127.0.0.1", client_key, expected_accept_key, TEST_TIMEOUT_MS));
+
+    // Send a PING frame
+    ws_test_frame_t ping_frame;
+    memset(&ping_frame, 0, sizeof(ping_frame));
+    ping_frame.type = WS_TYPE_PING;
+    ping_frame.fin = true;
+    ping_frame.masked = true;
+    const char *ping_payload = "PING";
+    ping_frame.payload = (uint8_t *)ping_payload;
+    ping_frame.payload_len = strlen(ping_payload);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_send_frame(client, &ping_frame, TEST_TIMEOUT_MS));
+
+    // Then: The client should receive a PONG frame
+    ws_test_frame_t pong_frame;
+    memset(&pong_frame, 0, sizeof(pong_frame));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_recv_frame(client, &pong_frame, TEST_TIMEOUT_MS));
+    
+    TEST_ASSERT_EQUAL(WS_TYPE_PONG, pong_frame.type);
+    TEST_ASSERT_EQUAL(strlen(ping_payload), pong_frame.payload_len);
+    TEST_ASSERT_EQUAL_STRING(ping_payload, (char*)pong_frame.payload);
+
+
+    ws_test_client_free_frame(&pong_frame);
+
+    // Cleanup
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_ws_connection_when_idle_then_keep_alive_maintains_connection
+ *
+ * Purpose: Verify that the server's keep-alive mechanism maintains an idle WebSocket connection.
+ * Expected: The connection remains open and responsive after the idle period.
+ */
+void given_ws_connection_when_idle_then_keep_alive_maintains_connection(void)
+{
+    // Given: A running server with a short recv_wait_timeout
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9025; // Use a unique port
+    config.recv_wait_timeout = 2; // 2 seconds
+
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t ws_uri = {
+        .uri        = "/ws_keep_alive",
+        .method     = HTTP_GET,
+        .handler    = ws_test_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
+
+    // When: A client connects and performs a handshake
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char expected_accept_key[33];
+    generate_ws_accept_key(client_key, expected_accept_key, sizeof(expected_accept_key));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_handshake(client, "/ws_keep_alive", "127.0.0.1", client_key, expected_accept_key, TEST_TIMEOUT_MS));
+
+    // Wait for a period longer than the recv_wait_timeout
+    httpd_os_thread_sleep(config.recv_wait_timeout * 1000 + 1000);
+
+    // Then: The connection should still be alive, and a PING should receive a PONG
+    ws_test_frame_t ping_frame;
+    memset(&ping_frame, 0, sizeof(ping_frame));
+    ping_frame.type = WS_TYPE_PING;
+    ping_frame.fin = true;
+    ping_frame.masked = true;
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_send_frame(client, &ping_frame, TEST_TIMEOUT_MS));
+
+    ws_test_frame_t pong_frame;
+    memset(&pong_frame, 0, sizeof(pong_frame));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, ws_test_client_recv_frame(client, &pong_frame, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(WS_TYPE_PONG, pong_frame.type);
+    ws_test_client_free_frame(&pong_frame);
+
+    // Cleanup
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+
 int test_websocket(void) {
     // UNITY_BEGIN();
     RUN_TEST(given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds);
@@ -694,6 +815,9 @@ int test_websocket(void) {
     RUN_TEST(given_ws_connection_when_client_sends_close_frame_then_server_responds_with_close_and_closes_connection);
     RUN_TEST(given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_returns_correct_client_type);
     RUN_TEST(given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails);
+    RUN_TEST(given_ws_connection_when_idle_then_keep_alive_maintains_connection);
+    RUN_TEST(given_ws_connection_when_client_sends_ping_then_server_responds_with_pong);
+
     // return UNITY_END();
     test_websocket_upgrade_handshake();
     return 0;
