@@ -90,6 +90,7 @@ static esp_err_t verify_url (http_parser *parser)
      * by 'at' is not NULL terminated, therefore use length provided by
      * parser while copying the URI to buffer */
     strlcpy((char *)r->uri, at, (length));// + 1)); //TODO (DROR): identify why it behaves differently in mingw
+    ((char *)(r->uri))[sizeof(r->uri) - 1] = '\0';
     LOGD(TAG, LOG_FMT("received URI = %s"), r->uri);
 
     /* Make sure version is HTTP/1.1 or HTTP/1.0 (legacy compliance purpose) */
@@ -968,8 +969,9 @@ esp_err_t httpd_req_get_url_query_str(httpd_req_t *r, char *buf, size_t buf_len)
         size_t min_buf_len = res->field_data[UF_QUERY].len + 1;
 
         strlcpy(buf, qry, MIN(buf_len, min_buf_len));
+        buf[buf_len-1] = '\0';
+
         if (buf_len < min_buf_len) {
-            buf[buf_len-1] = '\0';
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }
         return ESP_OK;
@@ -1086,6 +1088,8 @@ esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *r, const char *field, char *v
 
         /* Get the NULL terminated value and copy it to the caller's buffer. */
         strlcpy(val, val_ptr, buf_len);
+        val[buf_len-1] = '\0';
+
 
         /* Update value length, including one byte for null */
         val_size = strlen(val_ptr) + 1;
@@ -1146,10 +1150,10 @@ esp_err_t static httpd_cookie_key_value(const char *cookie_str, const char *key,
 
         /* Copy value without semicolon delimiter */
         strlcpy(val, val_ptr, MIN(_val_size, buf_len));
+        val[buf_len - 1] = '\0';
 
         /* If buffer length is smaller than needed, return truncation error */
         if (buf_len < _val_size) {
-            val[buf_len-1] = '\0';
             *val_size = _val_size;
             return ESP_ERR_HTTPD_RESULT_TRUNC;
         }

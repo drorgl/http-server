@@ -345,16 +345,18 @@ void test_httpd_req_get_cookie_val_success() {
     req.aux = &ra;
 
     char val_buf[32];
-    size_t val_size = sizeof(val_buf);
+    size_t val_size;
     esp_err_t err;
 
     // Test case 1: Retrieve an existing cookie
+    val_size = sizeof(val_buf);
     memset(val_buf, 0, sizeof(val_buf));
     err = httpd_req_get_cookie_val(&req, "cookie1", val_buf, &val_size);
     TEST_ASSERT_EQUAL(ESP_OK, err);
     TEST_ASSERT_EQUAL_STRING("value1", val_buf);
     TEST_ASSERT_EQUAL(strlen("value1"), val_size); // Check updated size
 
+    val_size = sizeof(val_buf);
     memset(val_buf, 0, sizeof(val_buf));
     err = httpd_req_get_cookie_val(&req, "cookie2", val_buf, &val_size);
     TEST_ASSERT_EQUAL(ESP_OK, err);
