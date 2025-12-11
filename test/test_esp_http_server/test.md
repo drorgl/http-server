@@ -86,16 +86,22 @@ The tests are organized by functionality area to:
 **Tests Included**:
 - `given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds` - Tests WebSocket upgrade
 - `given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchanged_correctly` - Tests data frame exchange
+- `given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds` - Tests 16-bit length frames
+- `given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds` - Tests 64-bit length frames
 - `given_ws_connection_when_client_sends_close_frame_then_server_responds_with_close_and_closes_connection` - Tests connection closing
+- `given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_returns_correct_client_type` - Tests client type identification
+- `given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails` - Tests subprotocol length validation
+- `given_ws_connection_when_idle_then_keep_alive_maintains_connection` - Tests WebSocket keep-alive
+- `given_ws_connection_when_client_sends_ping_then_server_responds_with_pong` - Tests ping/pong functionality
 
-**What They Test**: WebSocket protocol implementation, handshake process, text/binary frame handling, and connection management.
+**What They Test**: WebSocket protocol implementation, handshake process, text/binary frame handling, connection management, and control frames.
 
 ### 6. Client Management Tests (`test_client_management.cpp`)
 
 **Purpose**: Tests for client connection management, limits, and concurrency.
 
 **Tests Included**:
-- `given_valid_server_when_calling_httpd_get_client_list_then_returns_client_fds` - Verifies client list retrieval functionality.
+- `given_valid_server_when_calling_httpd_get_client_list_then_returns_client_fds` - Verifies client list retrieval functionality
 - `given_server_with_lru_enabled_when_max_sockets_exceeded_then_oldest_session_is_closed` - Tests LRU mechanism
 - `given_server_with_multiple_clients_when_rapid_connections_then_server_handles_gracefully` - Tests rapid connection handling
 - `given_server_with_open_close_callbacks_when_client_connects_and_disconnects_then_callbacks_are_invoked` - Tests connection callbacks
@@ -113,8 +119,8 @@ The tests are organized by functionality area to:
 - `given_server_running_when_long_uri_request_is_sent_then_414_uri_too_long_is_returned` - Tests 414 handling
 - `given_server_running_when_long_header_request_is_sent_then_431_req_hdr_fields_too_large_is_returned` - Tests 431 handling
 - `given_server_with_custom_error_handler_when_error_occurs_then_handler_is_invoked` - Tests custom error handlers
-- `given_request_with_less_content_length_when_sent_then_server_handles_correctly` - Tests content length validation
-- `given_request_with_more_content_length_when_sent_then_server_handles_correctly` - Tests content length validation
+- `given_request_with_less_content_length_when_sent_then_server_handles_correctly` - Tests content length validation (less data)
+- `given_request_with_more_content_length_when_sent_then_server_handles_correctly` - Tests content length validation (more data)
 
 **What They Test**: HTTP error codes, malformed request handling, content length validation, and custom error response generation.
 
@@ -123,16 +129,72 @@ The tests are organized by functionality area to:
 **Purpose**: Tests for utility functions and context management.
 
 **Tests Included**:
-- `given_valid_uris_when_calling_httpd_uri_match_wildcard_then_correctly_matches` - Tests URI pattern matching
-- `given_custom_uri_match_fn_when_request_matches_then_handler_invoked` - Tests custom URI matching
 - `given_request_with_multiple_headers_when_calling_httpd_req_get_hdr_value_str_then_returns_correct_values` - Tests header extraction
 - `given_headers_with_last_header_no_crlf_when_get_header_then_returns_correct_value` - Tests header parsing edge cases
 - `given_valid_request_with_body_when_calling_httpd_req_recv_then_receives_data` - Tests request receiving
 - `given_valid_request_when_calling_httpd_send_then_sends_data` - Tests data sending
+- `given_server_with_custom_uri_match_fn_when_request_matches_then_handler_invoked` - Tests custom URI matching
 - `given_server_with_uri_handler_when_client_connects_then_handler_is_invoked` - Tests end-to-end flow
 - `dummy` - Placeholder test.
 
 **What They Test**: URI pattern matching, context management, custom matching functions, header parsing, request receiving, data sending, and end-to-end flow testing.
+
+### 9. Async Requests Tests (`test_async_requests.cpp`)
+
+**Purpose**: Tests for asynchronous request handling.
+
+**Tests Included**:
+- `given_server_with_async_handler_when_client_requests_then_receives_response` - Tests async request processing
+
+**What They Test**: Asynchronous request processing and response.
+
+### 10. Async WebSocket Tests (`test_async_websocket.cpp`)
+
+**Purpose**: Tests for asynchronous WebSocket functionality.
+
+**Tests Included**:
+- `given_ws_connection_when_sending_sync_from_another_task_then_succeeds` - Tests synchronous WebSocket sending from another task
+- `given_ws_connection_when_sending_async_from_another_task_then_succeeds` - Tests asynchronous WebSocket sending from another task
+- `given_closed_ws_connection_when_sending_sync_then_fails` - Tests failed synchronous sending on closed connection
+- `given_closed_ws_connection_when_sending_async_then_callback_receives_error` - Tests error callback for async sending on closed connection
+
+**What They Test**: Asynchronous WebSocket data sending and error handling.
+
+### 11. Async Work Queue Tests (`test_async_work_queue.cpp`)
+
+**Purpose**: Tests for the asynchronous work queue.
+
+**Tests Included**:
+- `given_server_with_async_work_queue_handler_when_client_gets_then_receives_two_responses` - Tests async work queue functionality
+
+**What They Test**: Asynchronous work queue functionality.
+
+### 12. Empty Header Tests (`test_empty_header.cpp`)
+
+**Purpose**: Tests for handling requests with empty headers.
+
+**Tests Included**:
+- `given_server_with_empty_header_handler_when_client_sends_request_with_empty_header_then_it_is_handled_correctly` - Tests correct parsing of empty headers
+
+**What They Test**: Correct parsing of empty headers.
+
+### 13. Leftover Data Tests (`test_leftover_data.cpp`)
+
+**Purpose**: Tests for handling leftover data in requests.
+
+**Tests Included**:
+- `given_server_with_leftover_data_handler_when_client_posts_then_server_handles_it_gracefully` - Tests server robustness when handling requests with unread body data
+
+**What They Test**: Server robustness when handling requests with unread body data.
+
+### 14. Session Context Tests (`test_session_context.cpp`)
+
+**Purpose**: Tests for session context management.
+
+**Tests Included**:
+- `given_server_with_session_handler_when_client_posts_then_context_is_maintained` - Tests session context creation, persistence, and cleanup
+
+**What They Test**: Session context creation, persistence, and cleanup.
 
 ## Dependencies
 
@@ -213,6 +275,7 @@ The tests use the Unity test framework and are designed to work with PlatformIO'
 - `given_server_with_custom_response_handler_when_client_requests_then_receives_custom_response` - Tests custom headers/status
 - `given_server_with_chunked_handler_when_client_requests_then_receives_chunked_response` - Tests chunked encoding
 - `given_server_with_large_response_handler_when_client_requests_then_receives_large_response` - Tests large response handling
+- `given_valid_uris_when_calling_httpd_uri_match_wildcard_then_correctly_matches` - Tests URI pattern matching
 - `given_valid_global_context_when_setting_and_getting_then_context_preserved` - Tests global context
 - `given_valid_session_context_when_setting_and_getting_then_context_preserved` - Tests session context
 
@@ -220,11 +283,17 @@ The tests use the Unity test framework and are designed to work with PlatformIO'
 **Test Functions:**
 - `given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds` - Tests WebSocket upgrade
 - `given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchanged_correctly` - Tests data frame exchange
+- `given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds` - Tests 16-bit length frames
+- `given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds` - Tests 64-bit length frames
 - `given_ws_connection_when_client_sends_close_frame_then_server_responds_with_close_and_closes_connection` - Tests connection closing
+- `given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_returns_correct_client_type` - Tests client type identification
+- `given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_handshake_fails` - Tests subprotocol length validation
+- `given_ws_connection_when_idle_then_keep_alive_maintains_connection` - Tests WebSocket keep-alive
+- `given_ws_connection_when_client_sends_ping_then_server_responds_with_pong` - Tests ping/pong functionality
 
 ### 6. Client Management Tests (`test_client_management.cpp`)
 **Test Functions:**
-- `given_valid_server_when_calling_httpd_get_client_list_then_returns_client_fds` - Verifies client list retrieval functionality.
+- `given_valid_server_when_calling_httpd_get_client_list_then_returns_client_fds` - Verifies client list retrieval functionality
 - `given_server_with_lru_enabled_when_max_sockets_exceeded_then_oldest_session_is_closed` - Tests LRU mechanism
 - `given_server_with_multiple_clients_when_rapid_connections_then_server_handles_gracefully` - Tests rapid connection handling
 - `given_server_with_open_close_callbacks_when_client_connects_and_disconnects_then_callbacks_are_invoked` - Tests connection callbacks
@@ -242,14 +311,14 @@ The tests use the Unity test framework and are designed to work with PlatformIO'
 
 ### 8. Utility Tests (`test_utilities.cpp`)
 **Test Functions:**
-- `given_valid_uris_when_calling_httpd_uri_match_wildcard_then_correctly_matches` - Tests URI pattern matching
-- `given_custom_uri_match_fn_when_request_matches_then_handler_invoked` - Tests custom URI matching
-- `given_server_with_uri_handler_when_client_connects_then_handler_is_invoked` - Tests end-to-end flow
 - `given_request_with_multiple_headers_when_calling_httpd_req_get_hdr_value_str_then_returns_correct_values` - Tests header extraction
 - `given_headers_with_last_header_no_crlf_when_get_header_then_returns_correct_value` - Tests header parsing edge cases
 - `given_valid_request_with_body_when_calling_httpd_req_recv_then_receives_data` - Tests request receiving
 - `given_valid_request_when_calling_httpd_send_then_sends_data` - Tests data sending
+- `given_server_with_custom_uri_match_fn_when_request_matches_then_handler_invoked` - Tests custom URI matching
+- `given_server_with_uri_handler_when_client_connects_then_handler_is_invoked` - Tests end-to-end flow
 - `dummy` - Placeholder test.
+
 
 ## TODO Section - Missing Edge Cases and Improvements
 
