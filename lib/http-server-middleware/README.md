@@ -22,7 +22,7 @@ This library provides a middleware framework for the ESP HTTP Server, implementi
 
 ### Example Middleware
 - **Logging**: Logs request details
-- **Authentication**: Checks Authorization header (POC implementation)
+- **Authentication**: Callback-based Basic Auth (dynamic credential/path validation)
 
 ## Design Approach
 
@@ -32,7 +32,7 @@ This implementation follows the **Dependency Injection** approach for maximum fl
 
 All `*config_t` structures now include function pointer callbacks for HTTP operations used by that module:
 
-- `auth_config_t`: `req_get_hdr_value_str`, `resp_set_status`, `resp_set_hdr`, `resp_send_err`
+- `auth_config_t`: `req_get_hdr_value_str`, `resp_set_status`, `resp_set_hdr`, `resp_send_err`, `check_credentials`, `requires_auth`
 - `cors_config_t`: `req_get_hdr_value_str`, `resp_set_status`, `resp_set_hdr`, `resp_send_err`, `resp_send`
 - `logging_config_t`: `req_get_hdr_value_str`, `method_str`, `printf`
 - `httpd_middleware_config_t`: `uri_match_wildcard`
@@ -58,32 +58,54 @@ cors_config_t config = {
 
 In unit tests, assign mock function pointers for isolated testing.
 
-## Breaking Changes in v3.0.0
+## Breaking Changes
 
-**This version introduces dependency injection for better testability:**
+### v3.1.0 - Authentication Callbacks
+**Replaced static credentials/path bypass with flexible callbacks for dynamic auth:**
 
-- ✅ Added callback function pointers to all `*config_t` structures
-- ❌ Removed direct HTTP function calls from middleware implementations
-- ✅ Enhanced unit testing with mockable operations
-- ✅ Cross-platform compatible (no ESP-specific dependencies in middleware)
+- ❌ Removed `auth_config_t.username`, `auth_config_t.password`, `auth_config_t.allow_public`
+- ✅ Added `auth_config_t.check_credentials()` (validate username/password)
+- ✅ Added `auth_config_t.requires_auth()` (per-URI auth bypass)
+
+### v3.0.0 - Dependency Injection
+**Introduced DI for testability/cross-platform:**
+
+- ✅ Added HTTP callback pointers to all `*config_t`
+- ❌ Removed direct httpd_* calls from middleware
 
 ### Migration Guide
 
-**After (v3.0.0):**
+#### From v3.0.0 → v3.1.0 (Auth Callbacks)
 ```c
-// With dependency injection
+// BEFORE (static):
 auth_config_t config = {
     .username = "admin",
     .password = "secret",
     .allow_public = true,
-    // Required function callbacks
     .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
-    .resp_set_status = httpd_resp_set_status,
-    .resp_set_hdr = httpd_resp_set_hdr,
-    .resp_send_err = httpd_resp_send_err
+    // ...
 };
-middleware_auth(&req, &uri, &config);  // Uses injected callbacks
+
+// AFTER (callbacks):
+static esp_err_t my_check(const char *u, const char *p, void *ctx) {
+    return (strcmp(u, "admin")==0 && strcmp(p, "secret")==0) ? ESP_OK : ESP_FAIL;
+}
+static bool my_requires(const char *uri, void *ctx) {
+    return strncmp(uri, "/public/", 8) != 0;
+}
+
+auth_config_t config = {
+    .check_credentials = my_check,
+    .check_ctx = NULL,
+    .requires_auth = my_requires,
+    .bypass_ctx = NULL,
+    .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
+    // ...
+};
 ```
+
+#### v3.0.0 DI Migration (unchanged)
+[existing code]
 
 ## Usage Example
 
@@ -105,9 +127,14 @@ httpd_middleware_config_t configs[] = {
     {
         .func = middleware_auth,
         .context = &(auth_config_t){
-            .username = "admin",
-            .password = "password123",
-            .allow_public = true
+            .check_credentials = my_auth_check,
+            .check_ctx = NULL,
+            .requires_auth = my_requires_auth,
+            .bypass_ctx = NULL,
+            .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
+            .resp_set_status = httpd_resp_set_status,
+            .resp_set_hdr = httpd_resp_set_hdr,
+            .resp_send_err = httpd_resp_send_err
         },
         .enabled = true
     }
@@ -172,24 +199,55 @@ httpd_middleware_config_t cors_middleware = {
 - ✅ Configurable cache duration
 - ✅ Comprehensive header support
 
+### Authentication Middleware (Enhanced)
+
+**Dynamic Basic Auth with callbacks for credential validation and path bypass:**
+
+**Features:**
+- ✅ Per-request `requires_auth(uri)` bypass (e.g., `/public/*`, health checks)
+- ✅ `check_credentials(username, password)` for DB/JWT/roles
+- ✅ Full Basic Auth parsing/validation (header, base64, format)
+- ✅ 401 responses with WWW-Authenticate
+- ✅ Dependency injection for testing
+
+**Example:**
+```c
+static bool requires_auth_cb(const char *uri, void *ctx) {
+    return strncmp(uri, "/public/", 8) != 0 && strcmp(uri, "/health") != 0;
+}
+static esp_err_t creds_cb(const char *u, const char *p, void *ctx) {
+    return (strcmp(u, "admin")==0 && strcmp(p, "secret")==0) ? ESP_OK : ESP_FAIL;
+}
+
+auth_config_t auth_cfg = {
+    .requires_auth = requires_auth_cb,
+    .check_credentials = creds_cb,
+    // + DI callbacks
+};
+```
+
 ## Files Structure
 
 ```
 lib/http-server-middleware/
-├── CMakeLists.txt                 # Build configuration
+├── CMakeLists.txt
 ├── include/
-│   └── http_server_middleware.h  # Public API
+│   ├── http_server_middleware.h
+│   ├── middleware_auth.h
+│   ├── middleware_logging.h
+│   └── middleware_cors.h
 ├── src/
-│   └── http_server_middleware.c  # Implementation
-├── test_middleware_example.c      # Usage examples
-└── README.md                      # This documentation
+│   ├── http_server_middleware.c
+│   ├── middleware_auth.c
+│   ├── middleware_logging.c
+│   └── middleware_cors.c
+├── test/
+│   └── test_http_server_middleware/
+└── README.md
 ```
 
 ## Testing
 
-Unit tests are in `test/test_http_server_middleware/test_middleware.c`
-
-The middleware framework and CORS implementation have been verified through:
-- ✅ Framework tests (wrapper creation, execution order, filtering)
-- ✅ CORS integration tests (configuration and wrapping)
-- ✅ Design compliance verification
+Unit tests in `test/test_http_server_middleware/`:
+- ✅ Framework + individual middleware (auth, logging, CORS)
+- ✅ `pio test -e native -vvv`

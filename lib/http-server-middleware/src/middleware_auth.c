@@ -6,15 +6,18 @@
 #include "base64_codec.h" // Include the base64 codec library
 
 /**
- * @brief Basic authentication middleware (enforces HTTP Basic auth)
+ * @brief Basic authentication middleware using configurable callbacks
+ *
+ * First checks if auth is required for the URI via requires_auth callback.
+ * If required, validates Basic Auth credentials via check_credentials callback.
  */
 esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
 {
     const auth_config_t *config = (const auth_config_t *)ctx;
 
-    // Skip authentication for public endpoints if configured
-    if (config->allow_public && strstr(req->uri, "/public/")) {
-        return ESP_OK;
+    // Check if this URI requires authentication
+    if (config->requires_auth && !config->requires_auth(req->uri, config->bypass_ctx)) {
+        return ESP_OK;  // Bypass auth for this path
     }
 
     // Get Authorization header
@@ -64,11 +67,8 @@ esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     const char *username = decoded;
     const char *password = separator + 1;
 
-    // Check credentials
-    if (!config->username || !config->password ||
-        strcmp(username, config->username) != 0 ||
-        strcmp(password, config->password) != 0) {
-
+    // Check credentials via callback
+    if (!config->check_credentials || config->check_credentials(username, password, config->check_ctx) != ESP_OK) {
         // Invalid credentials
         config->resp_set_status(req, "401 Unauthorized");
         config->resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Protected Area\"");

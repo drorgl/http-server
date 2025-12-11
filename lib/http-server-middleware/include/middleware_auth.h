@@ -14,9 +14,12 @@ extern "C" {
  * @brief Authentication configuration structure
  */
 typedef struct auth_config {
-    const char *username;            /**< Expected username for authentication */
-    const char *password;            /**< Expected password for authentication */
-    bool allow_public;               /**< Allow access to /public/ endpoints without auth */
+    esp_err_t (*check_credentials)(const char *username, const char *password, void *check_ctx);  /**< Callback to validate parsed credentials */
+    void *check_ctx;                                                                             /**< Context for credential callback */
+    
+    bool (*requires_auth)(const char *uri, void *bypass_ctx);                                     /**< Callback to check if URI requires auth (true=auth needed) */
+    void *bypass_ctx;                                                                            /**< Context for bypass callback */
+    
     // Function callbacks for dependency injection
     esp_err_t (*req_get_hdr_value_str)(httpd_req_t *req, const char *field, char *val, size_t val_size); /**< Get header value callback */
     esp_err_t (*resp_set_status)(httpd_req_t *req, const char *status);                                 /**< Set response status callback */
@@ -25,10 +28,13 @@ typedef struct auth_config {
 } auth_config_t;
 
 /**
- * @brief Basic authentication middleware
+ * @brief Basic authentication middleware (callback-based)
  *
- * Checks for Authorization header on non-public endpoints.
- * Public endpoints (paths starting with "/public/") skip authentication.
+ * 1. Calls requires_auth(uri, bypass_ctx): if false, bypasses auth entirely (ESP_OK).
+ * 2. If auth required: Parses Basic Auth header, validates format, calls check_credentials(username, password, check_ctx).
+ * 3. Returns ESP_OK on success, ESP_FAIL + 401 on failure.
+ *
+ * NULL callbacks: requires_auth=NULL requires auth always; check_credentials=NULL denies always.
  */
 esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx);
 
