@@ -24,6 +24,7 @@
 #include "test_leftover_data.h"
 #include "test_async_work_queue.h"
 #include "test_empty_header.h"
+#include "test_authentication.h"
 
 #define TAG "TEST_HTTPD_COORDINATOR"
 
@@ -44,22 +45,23 @@ void tearDown(){
 }
 
 int test_esp_http_server(){
-    return 
+    return
         test_server_lifecycle() |
-        test_uri_handlers() | 
-        test_utilities() | 
+        test_uri_handlers() |
+        test_utilities() |
         test_client_management() |
-        test_error_handling() | 
-        test_response_handling() | 
-        test_request_processing() | 
-        test_async_websocket() | 
+        test_error_handling() |
+        test_response_handling() |
+        test_request_processing() |
+        test_async_websocket() |
         test_async_requests() |
         test_session_context() |
         test_leftover_data() |
         test_async_work_queue() |
         test_empty_header() |
-        test_websocket();
-    
+        test_websocket() |
+        test_authentication();
+
 }
 
 #ifdef __cplusplus
