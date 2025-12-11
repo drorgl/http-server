@@ -31,7 +31,7 @@ static esp_err_t wrapped_handler(httpd_req_t *req)
 
         // URI pattern wildcard matching
         if (config->uri_pattern != NULL) {
-            if (!httpd_uri_match_wildcard(config->uri_pattern, req->uri, strlen(req->uri))) {
+            if (!config->uri_match_wildcard(config->uri_pattern, req->uri, strlen(req->uri))) {
                 continue;  // URI doesn't match, skip this middleware
             }
         }
@@ -87,12 +87,14 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
     // Allocate context for wrapped handler
     wrapped_handler_ctx_t *ctx = (wrapped_handler_ctx_t *)malloc(sizeof(wrapped_handler_ctx_t));
     if (ctx == NULL) {
+        fprintf(stderr, "httpd_uri_wrap_with_middleware: Failed to allocate wrapped_handler_ctx_t\\n");
         return NULL;
     }
 
     // Allocate configs array (shallow copy except for uri_pattern)
     ctx->configs = (httpd_middleware_config_t *)malloc(sizeof(httpd_middleware_config_t) * num_configs);
     if (ctx->configs == NULL) {
+        fprintf(stderr, "httpd_uri_wrap_with_middleware: Failed to allocate middleware configs array\\n");
         free(ctx);
         return NULL;
     }
@@ -104,6 +106,7 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
         if (configs[i].uri_pattern) {
             ctx->configs[i].uri_pattern = strdup(configs[i].uri_pattern);
             if (ctx->configs[i].uri_pattern == NULL) {
+                fprintf(stderr, "httpd_uri_wrap_with_middleware: Failed to duplicate uri_pattern string\\n");
                 // Memory allocation failed, cleanup and return NULL
                 // Free any previously allocated strings
                 for (size_t j = 0; j < i; j++) {
@@ -124,6 +127,7 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
     // Allocate new URI handler
     httpd_uri_t *wrapped_uri = (httpd_uri_t *)malloc(sizeof(httpd_uri_t));
     if (wrapped_uri == NULL) {
+        fprintf(stderr, "httpd_uri_wrap_with_middleware: Failed to allocate wrapped_uri_t\\n");
         free(ctx->configs);
         free(ctx);
         return NULL;
@@ -142,129 +146,4 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
 #endif
 
     return wrapped_uri;
-}
-
-/*
- * Simple example middleware implementations for POC
- */
-
-/**
- * @brief Basic logging middleware
- */
-esp_err_t middleware_logging(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
-{
-    printf("Middleware LOG: %s %s\n", http_method_str(req->method), req->uri);
-    return ESP_OK;
-}
-
-/**
- * @brief Helper function to check if origin is in allowed list
- */
-static bool cors_origin_allowed(const char *origin, const char *allowed_origins)
-{
-    if (strcmp(allowed_origins, "*") == 0) {
-        return true;
-    }
-
-    // Simple comma-separated list check (could be optimized)
-    const char *ptr = allowed_origins;
-    while (*ptr) {
-        const char *start = ptr;
-        while (*ptr && *ptr != ',') {
-            ptr++;
-        }
-
-        size_t len = ptr - start;
-        if (strncmp(origin, start, len) == 0 && strlen(origin) == len) {
-            return true;
-        }
-
-        if (*ptr == ',') ptr++; // Skip comma and space
-        while (*ptr == ' ') ptr++; // Skip spaces after comma
-    }
-
-    return false;
-}
-
-/**
- * @brief CORS middleware implementation
- *
- * Handles preflight OPTIONS requests and adds CORS headers to responses
- */
-esp_err_t middleware_cors(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
-{
-    const cors_config_t *config = (const cors_config_t *)ctx;
-
-    // Get Origin header from request
-    char origin_header[128];
-    if (httpd_req_get_hdr_value_str(req, "Origin", origin_header, sizeof(origin_header)) != ESP_OK) {
-        // No Origin header, not a CORS request - continue processing
-        return ESP_OK;
-    }
-
-    // Check if origin is allowed
-    if (!cors_origin_allowed(origin_header, config->allowed_origins)) {
-        printf("CORS: Origin '%s' not allowed\n", origin_header);
-        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Origin not allowed");
-        return ESP_FAIL;
-    }
-
-    // Handle preflight OPTIONS request
-    if (req->method == HTTP_OPTIONS) {
-        httpd_resp_set_status(req, HTTPD_200);
-
-        // Set CORS headers for preflight
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", origin_header);
-        if (config->allowed_methods) {
-            httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", config->allowed_methods);
-        }
-        if (config->allowed_headers) {
-            httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", config->allowed_headers);
-        }
-        if (config->allow_credentials) {
-            httpd_resp_set_hdr(req, "Access-Control-Allow-Credentials", "true");
-        }
-        if (config->max_age > 0) {
-            char max_age_str[16];
-            sprintf(max_age_str, "%d", config->max_age);
-            httpd_resp_set_hdr(req, "Access-Control-Max-Age", max_age_str);
-        }
-
-        httpd_resp_send(req, NULL, 0);
-        printf("CORS: Preflight OPTIONS handled\n");
-        return ESP_OK; // Handled OPTIONS request, return without calling handler
-    }
-
-    // For non-OPTIONS requests, just add the basic CORS headers
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", origin_header);
-    if (config->allow_credentials) {
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Credentials", "true");
-    }
-
-    printf("CORS: Added headers for %s from %s\n", req->uri, origin_header);
-    return ESP_OK; // Continue to execute original handler
-}
-
-/**
- * @brief Basic authentication middleware (checks for Authorization header)
- */
-esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
-{
-    // Skip auth for public endpoints
-    if (strstr(req->uri, "/public/")) {
-        return ESP_OK;
-    }
-
-    // Check for Authorization header (simplified)
-    char auth_buf[128];
-    esp_err_t ret = httpd_req_get_hdr_value_str(req, "Authorization", auth_buf, sizeof(auth_buf));
-    if (ret != ESP_OK) {
-        // In real implementation, would return 401
-        printf("Middleware AUTH: Missing Authorization header\n");
-        // For POC, just log and continue
-    } else {
-        printf("Middleware AUTH: Found Authorization: %s\n", auth_buf);
-    }
-
-    return ESP_OK;
 }

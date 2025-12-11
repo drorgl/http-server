@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+  "name": "http-server-middleware",
+  "version": "1.0.0",
+  "description": "Middleware components for the ESP HTTP Server library",
+  "keywords": [
+    "http",
+    "server",
+    "middleware",
+    "esp32",
+    "corstest",
+    "authentication"
+  ],
+  "homepage": "https://github.com/drorgl/http-server",
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src"
+  }
+}

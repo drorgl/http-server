@@ -3,17 +3,11 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
-#ifdef ESP_PLATFORM
-#include <esp_err.h>
-#else
-// For cross-platform testing
-#define ESP_OK 0
-#define ESP_FAIL -1
-typedef int esp_err_t;
-#endif
-
-#include "../http-server/include/http_server.h"  // For httpd_req_t and related types
+#include <http_server.h>  // For httpd_req_t and related types
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,13 +36,15 @@ typedef void (*httpd_middleware_free_ctx_fn_t)(void *ctx);
  * @brief Middleware configuration structure
  */
 typedef struct httpd_middleware_config {
-    httpd_middleware_func_t func;           /**< Middleware function */
-    void *context;                          /**< User context for middleware */
-    httpd_middleware_free_ctx_fn_t free_ctx; /**< Context cleanup function */
-    int priority;                           /**< Deprecated - execution order determined by array position */
-    const char *uri_pattern;                /**< URI pattern filter (exact match for POC, wildcards later) */
-    httpd_method_t method_filter;           /**< HTTP method filter (HTTP_ANY for all) */
-    bool enabled;                           /**< Enable/disable flag */
+    httpd_middleware_func_t func;                          /**< Middleware function */
+    void *context;                                         /**< User context for middleware */
+    httpd_middleware_free_ctx_fn_t free_ctx;               /**< Context cleanup function */
+    int priority;                                          /**< Deprecated - execution order determined by array position */
+    const char *uri_pattern;                               /**< URI pattern filter (exact match for POC, wildcards later) */
+    httpd_method_t method_filter;                          /**< HTTP method filter (HTTP_ANY for all) */
+    bool enabled;                                          /**< Enable/disable flag */
+    // Function callback for dependency injection
+    bool (*uri_match_wildcard)(const char *uri_template, const char *uri, size_t match_upto); /**< URI wildcard matching callback */
 } httpd_middleware_config_t;
 
 /**
@@ -77,39 +73,6 @@ typedef struct wrapped_handler_ctx {
 httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
                                            const httpd_middleware_config_t *configs,
                                            size_t num_configs);
-
-/*
- * Example middleware functions for POC demonstration
- */
-
-/**
- * @brief Logging middleware - logs request details
- */
-esp_err_t middleware_logging(httpd_req_t *req, const httpd_uri_t *uri, void *ctx);
-
-/**
- * @brief Basic authentication middleware (checks for Authorization header)
- */
-esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx);
-
-/**
- * @brief CORS middleware - handles Cross-Origin Resource Sharing
- *
- * This middleware adds CORS headers to responses and handles preflight OPTIONS requests.
- * It can be configured with different origins, methods, and headers.
- */
-esp_err_t middleware_cors(httpd_req_t *req, const httpd_uri_t *uri, void *ctx);
-
-/**
- * @brief CORS configuration structure
- */
-typedef struct cors_config {
-    const char *allowed_origins;     /**< Comma-separated list of allowed origins, or "*" for all */
-    const char *allowed_methods;     /**< Comma-separated list of allowed methods */
-    const char *allowed_headers;     /**< Comma-separated list of allowed headers */
-    bool allow_credentials;          /**< Whether to allow credentials */
-    int max_age;                     /**< Max age for preflight cache in seconds */
-} cors_config_t;
 
 #ifdef __cplusplus
 }

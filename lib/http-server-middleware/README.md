@@ -2,9 +2,7 @@
 
 This library provides a middleware framework for the ESP HTTP Server, implementing the design specified in `middleware_design.md`. The middleware system enables pluggable, reusable components for handling cross-cutting concerns such as authentication, security, logging, and HTTP feature compliance.
 
-## Design Approach
 
-This implementation follows the **Standalone Component** approach from the design document, keeping the middleware completely separate from the core HTTP server library. Middleware is applied by wrapping URI handlers at the application level.
 
 ## Features Implemented (POC)
 
@@ -26,6 +24,67 @@ This implementation follows the **Standalone Component** approach from the desig
 - **Logging**: Logs request details
 - **Authentication**: Checks Authorization header (POC implementation)
 
+## Design Approach
+
+This implementation follows the **Dependency Injection** approach for maximum flexibility and testability, using callback function pointers injected at runtime. Middleware modules no longer directly call HTTP server functions, allowing for easy mocking in unit tests and cross-platform compatibility.
+
+### Dependency Injection
+
+All `*config_t` structures now include function pointer callbacks for HTTP operations used by that module:
+
+- `auth_config_t`: `req_get_hdr_value_str`, `resp_set_status`, `resp_set_hdr`, `resp_send_err`
+- `cors_config_t`: `req_get_hdr_value_str`, `resp_set_status`, `resp_set_hdr`, `resp_send_err`, `resp_send`
+- `logging_config_t`: `req_get_hdr_value_str`, `method_str`, `printf`
+- `httpd_middleware_config_t`: `uri_match_wildcard`
+
+In production code, assign the actual HTTP server functions:
+
+```c
+#include <http_server.h>  // For function pointers
+
+cors_config_t config = {
+    .allowed_origins = "https://example.com",
+    .allowed_methods = "GET,POST",
+    .allow_credentials = false,
+    .max_age = 3600,
+    // Function callback assignments
+    .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
+    .resp_set_status = httpd_resp_set_status,
+    .resp_set_hdr = httpd_resp_set_hdr,
+    .resp_send_err = httpd_resp_send_err,
+    .resp_send = httpd_resp_send
+};
+```
+
+In unit tests, assign mock function pointers for isolated testing.
+
+## Breaking Changes in v3.0.0
+
+**This version introduces dependency injection for better testability:**
+
+- ✅ Added callback function pointers to all `*config_t` structures
+- ❌ Removed direct HTTP function calls from middleware implementations
+- ✅ Enhanced unit testing with mockable operations
+- ✅ Cross-platform compatible (no ESP-specific dependencies in middleware)
+
+### Migration Guide
+
+**After (v3.0.0):**
+```c
+// With dependency injection
+auth_config_t config = {
+    .username = "admin",
+    .password = "secret",
+    .allow_public = true,
+    // Required function callbacks
+    .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
+    .resp_set_status = httpd_resp_set_status,
+    .resp_set_hdr = httpd_resp_set_hdr,
+    .resp_send_err = httpd_resp_send_err
+};
+middleware_auth(&req, &uri, &config);  // Uses injected callbacks
+```
+
 ## Usage Example
 
 ```c
@@ -45,6 +104,11 @@ httpd_middleware_config_t configs[] = {
     },
     {
         .func = middleware_auth,
+        .context = &(auth_config_t){
+            .username = "admin",
+            .password = "password123",
+            .allow_public = true
+        },
         .enabled = true
     }
 };
