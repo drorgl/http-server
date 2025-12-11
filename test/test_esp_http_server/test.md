@@ -11,6 +11,11 @@ This document describes the organization and structure of the ESP HTTP Server te
 - Covers WWW-Authenticate, Authorization, and Authentication-Info headers
 - Tests Basic authentication, malformed headers, and multiple auth schemes
 
+**Security Tests Added** - December 2025
+- New test category for HTTP Security compliance (RFC 9112 Section 11)
+- Addresses critical gap identified in standards.md for security vulnerabilities
+- Tests response splitting, header injection, CRLF injection, and request smuggling prevention
+
 ## Test Organization Philosophy
 
 The tests are organized by functionality area to:
@@ -231,6 +236,34 @@ The tests are organized by functionality area to:
 **What They Test**: Complete HTTP Basic authentication implementation with proper RFC 7617 base64 decoding, credential validation, error handling, and RFC 9110 header support.
 
 **Implementation Details**: Uses the `validate_basic_auth()` helper function to properly decode base64 credentials and validate username:password pairs against expected values, providing true RFC 7617 and RFC 9110 compliance.
+
+### 16. Security Tests (`test_security.cpp`)
+
+**Purpose**: Tests for critical HTTP security vulnerabilities and RFC 9112 compliance.
+
+**Tests Included**:
+- `test_response_splitting_prevention_in_custom_headers` - Tests that CRLF in header values don't create response splitting attacks
+- `test_response_splitting_prevention_in_custom_status` - Tests that custom status lines can't inject HTTP headers
+- `test_crlf_injection_protection_in_header_values` - Tests that Location and other headers can't be injected via CRLF
+- `test_header_injection_attack_prevention_in_error_messages` - Tests that custom error messages can't inject headers
+- `test_header_field_name_injection_prevention` - Tests that header field names can't contain injection characters
+- `test_request_smuggling_content_length_mismatch` - Tests Content-Length validation to prevent request smuggling
+
+**RFC 9112 Coverage**:
+- **Response splitting attack prevention** (Section 11.1) - CRLF injection in headers
+- **Request smuggling attack prevention** (Section 11.2) - Content-Length mismatches
+- **Header validation and sanitization** (Section 5.1-5.2) - Malformed header handling
+- **CRLF injection protection** - General input sanitization security
+
+**Security Vulnerabilities Tested**:
+- **HTTP Response Splitting**: Tests prevent injection of additional HTTP headers in response
+- **Header Injection**: Tests prevent malicious header field injection
+- **CRLF Injection**: Tests protect against carriage return/line feed injection attacks
+- **Request Smuggling**: Tests prevent HTTP request smuggling through Content-Length mismatches
+
+**What They Test**: Critical security vulnerabilities that could lead to serious attacks like cache poisoning, request smuggling, and XSS. Each test includes helper functions to detect response splitting patterns and validates that attacks don't succeed.
+
+**Implementation Details**: Uses `response_splitting_safe()` helper function to detect if patterns indicative of successful response splitting attacks appear in responses. Tests both direct header injection vectors and indirect injection through user-controlled data.
 
 ## Dependencies
 

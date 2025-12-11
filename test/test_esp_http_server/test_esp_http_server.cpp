@@ -25,6 +25,7 @@
 #include "test_async_work_queue.h"
 #include "test_empty_header.h"
 #include "test_authentication.h"
+#include "test_security.h"
 
 #define TAG "TEST_HTTPD_COORDINATOR"
 
@@ -60,7 +61,8 @@ int test_esp_http_server(){
         test_async_work_queue() |
         test_empty_header() |
         test_websocket() |
-        test_authentication();
+        test_authentication() |
+        test_security();
 
 }
 

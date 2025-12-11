@@ -23,6 +23,30 @@
 
 static const char *TAG = "httpd_txrx";
 
+/**
+ * Check if a string contains CRLF sequences that could enable HTTP response splitting
+ * @param str String to check
+ * @return true if CRLF sequences are found (either raw \r\n or URL-encoded %0D%0A)
+ */
+static bool httpd_contains_crlf(const char *str) {
+    if (!str) return false;
+
+    const char *ptr = str;
+    while (*ptr) {
+        // Check for raw CRLF sequence
+        if (*ptr == '\r' && *(ptr + 1) == '\n') {
+            return true;
+        }
+        // Check for URL-encoded CRLF sequence %0D%0A
+        if (*ptr == '%' && *(ptr + 1) == '0' && *(ptr + 2) == 'D' &&
+            *(ptr + 3) == '%' && *(ptr + 4) == '0' && *(ptr + 5) == 'A') {
+            return true;
+        }
+        ptr++;
+    }
+    return false;
+}
+
 esp_err_t httpd_sess_set_send_override(httpd_handle_t hd, int sockfd, httpd_send_func_t send_func)
 {
     struct sock_db *sess = httpd_sess_get(hd, sockfd);
@@ -183,6 +207,12 @@ esp_err_t httpd_resp_set_hdr(httpd_req_t *r, const char *field, const char *valu
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* Security check: prevent CRLF injection for response splitting attacks */
+    if (httpd_contains_crlf(field) || httpd_contains_crlf(value)) {
+        LOGW(TAG, LOG_FMT("CRLF injection attempt in header: %s"), field);
+        return ESP_ERR_INVALID_ARG;
+    }
+
     if (!httpd_valid_req(r)) {
         return ESP_ERR_HTTPD_INVALID_REQ;
     }
@@ -219,6 +249,13 @@ esp_err_t httpd_resp_set_status(httpd_req_t *r, const char *status)
     }
 
     struct httpd_req_aux *ra = r->aux;
+
+    /* Security check: prevent CRLF injection for response splitting attacks */
+    if (httpd_contains_crlf(status)) {
+        LOGW(TAG, LOG_FMT("CRLF injection attempt in status line"));
+        return ESP_ERR_INVALID_ARG;
+    }
+
     ra->status = (char *)status;
     return ESP_OK;
 }
