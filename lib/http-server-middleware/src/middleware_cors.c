@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "middleware_cors.h"
+#include "middleware_strings.h"
 
 /**
  * @brief Helper function to check if origin is in allowed list
@@ -52,29 +53,29 @@ esp_err_t middleware_cors(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     // Check if origin is allowed
     if (!cors_origin_allowed(origin_header, config->allowed_origins)) {
         printf("CORS: Origin '%s' not allowed\n", origin_header);
-        config->resp_send_err(req, HTTPD_403_FORBIDDEN, "Origin not allowed");
+        config->resp_send_err(req, HTTPD_403_FORBIDDEN, HTTP_ERR_CORS_ORIGIN_NOT_ALLOWED);
         return ESP_FAIL;
     }
 
     // Handle preflight OPTIONS request
     if (req->method == HTTP_OPTIONS) {
-        config->resp_set_status(req, "200 OK");
+        config->resp_set_status(req, HTTP_STATUS_200_OK);
 
         // Set CORS headers for preflight
-        config->resp_set_hdr(req, "Access-Control-Allow-Origin", origin_header);
+        config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_ALLOW_ORIGIN, origin_header);
         if (config->allowed_methods) {
-            config->resp_set_hdr(req, "Access-Control-Allow-Methods", config->allowed_methods);
+            config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_ALLOW_METHODS, config->allowed_methods);
         }
         if (config->allowed_headers) {
-            config->resp_set_hdr(req, "Access-Control-Allow-Headers", config->allowed_headers);
+            config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_ALLOW_HEADERS, config->allowed_headers);
         }
         if (config->allow_credentials) {
-            config->resp_set_hdr(req, "Access-Control-Allow-Credentials", "true");
+            config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_ALLOW_CREDENTIALS, HTTP_CORS_TRUE);
         }
         if (config->max_age > 0) {
             char max_age_str[16];
             sprintf(max_age_str, "%d", config->max_age);
-            config->resp_set_hdr(req, "Access-Control-Max-Age", max_age_str);
+            config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_MAX_AGE, max_age_str);
         }
 
         config->resp_send(req, NULL, 0);
@@ -83,9 +84,9 @@ esp_err_t middleware_cors(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     }
 
     // For non-OPTIONS requests, just add the basic CORS headers
-    config->resp_set_hdr(req, "Access-Control-Allow-Origin", origin_header);
+    config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_ALLOW_ORIGIN, origin_header);
     if (config->allow_credentials) {
-        config->resp_set_hdr(req, "Access-Control-Allow-Credentials", "true");
+        config->resp_set_hdr(req, HTTP_HDR_ACCESS_CONTROL_ALLOW_CREDENTIALS, HTTP_CORS_TRUE);
     }
 
     printf("CORS: Added headers for %s from %s\n", req->uri, origin_header);

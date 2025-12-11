@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "middleware_auth.h"
+#include "middleware_strings.h"
 #include "base64_codec.h" // Include the base64 codec library
 
 /**
@@ -25,18 +26,18 @@ esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     esp_err_t ret = config->req_get_hdr_value_str(req, "Authorization", auth_buf, sizeof(auth_buf));
     if (ret != ESP_OK) {
         // No Authorization header - return 401 Unauthorized
-        config->resp_set_status(req, "401 Unauthorized");
-        config->resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Protected Area\"");
-        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
+        config->resp_set_status(req, HTTP_STATUS_401_UNAUTHORIZED);
+        config->resp_set_hdr(req, HTTP_HDR_WWW_AUTHENTICATE, HTTP_AUTH_BASIC_REALM);
+        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, HTTP_ERR_AUTH_REQUIRED);
         return ESP_FAIL;
     }
 
     // Check if it's Basic auth
     if (strncmp(auth_buf, "Basic ", 6) != 0) {
         // Invalid auth type
-        config->resp_set_status(req, "401 Unauthorized");
-        config->resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Protected Area\"");
-        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Basic authentication required");
+        config->resp_set_status(req, HTTP_STATUS_401_UNAUTHORIZED);
+        config->resp_set_hdr(req, HTTP_HDR_WWW_AUTHENTICATE, HTTP_AUTH_BASIC_REALM);
+        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, HTTP_ERR_AUTH_BASIC_REQUIRED);
         return ESP_FAIL;
     }
 
@@ -45,9 +46,9 @@ esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     size_t decoded_len = base64_decode((const unsigned char *)(auth_buf + 6), strlen(auth_buf + 6), (unsigned char *)decoded, sizeof(decoded));
     if (decoded_len == 0) {
         // Invalid base64
-        config->resp_set_status(req, "401 Unauthorized");
-        config->resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Protected Area\"");
-        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid credentials format");
+        config->resp_set_status(req, HTTP_STATUS_401_UNAUTHORIZED);
+        config->resp_set_hdr(req, HTTP_HDR_WWW_AUTHENTICATE, HTTP_AUTH_BASIC_REALM);
+        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, HTTP_ERR_AUTH_INVALID_FORMAT);
         return ESP_FAIL;
     }
     decoded[decoded_len] = '\0'; // Null-terminate the decoded string
@@ -57,9 +58,9 @@ esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     if (!separator) {
 
         // No colon separator
-        config->resp_set_status(req, "401 Unauthorized");
-        config->resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Protected Area\"");
-        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid credentials format");
+        config->resp_set_status(req, HTTP_STATUS_401_UNAUTHORIZED);
+        config->resp_set_hdr(req, HTTP_HDR_WWW_AUTHENTICATE, HTTP_AUTH_BASIC_REALM);
+        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, HTTP_ERR_AUTH_INVALID_FORMAT);
         return ESP_FAIL;
     }
 
@@ -70,9 +71,9 @@ esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
     // Check credentials via callback
     if (!config->check_credentials || config->check_credentials(username, password, config->check_ctx) != ESP_OK) {
         // Invalid credentials
-        config->resp_set_status(req, "401 Unauthorized");
-        config->resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Protected Area\"");
-        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid credentials");
+        config->resp_set_status(req, HTTP_STATUS_401_UNAUTHORIZED);
+        config->resp_set_hdr(req, HTTP_HDR_WWW_AUTHENTICATE, HTTP_AUTH_BASIC_REALM);
+        config->resp_send_err(req, HTTPD_401_UNAUTHORIZED, HTTP_ERR_AUTH_INVALID_CREDS);
         return ESP_FAIL;
     }
 
