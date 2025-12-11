@@ -26,6 +26,7 @@
 #include "test_empty_header.h"
 #include "test_authentication.h"
 #include "test_security.h"
+#include "test_http_methods.h"
 
 #define TAG "TEST_HTTPD_COORDINATOR"
 
@@ -62,7 +63,8 @@ int test_esp_http_server(){
         test_empty_header() |
         test_websocket() |
         test_authentication() |
-        test_security();
+        test_security() |
+        test_http_methods();
 
 }
 

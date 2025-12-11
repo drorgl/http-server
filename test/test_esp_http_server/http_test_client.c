@@ -280,6 +280,15 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
         case HTTP_METHOD_POST:
             method_str = "POST";
             break;
+        case HTTP_METHOD_PUT:
+            method_str = "PUT";
+            break;
+        case HTTP_METHOD_DELETE:
+            method_str = "DELETE";
+            break;
+        case HTTP_METHOD_HEAD:
+            method_str = "HEAD";
+            break;
         default:
             return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
     }
@@ -290,7 +299,7 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
     if (headers_str) {
         request_len += strlen(headers_str);
     }
-    if (method == HTTP_METHOD_POST && body && body_len > 0) {
+    if ((method == HTTP_METHOD_POST || method == HTTP_METHOD_PUT) && body && body_len > 0) {
         char content_length_hdr[64];
         snprintf(content_length_hdr, sizeof(content_length_hdr), "Content-Length: %zu\r\n", body_len);
         request_len += strlen(content_length_hdr);
@@ -313,7 +322,7 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
     if (headers_str) {
         strcat(full_request, headers_str);
     }
-    if (method == HTTP_METHOD_POST && body && body_len > 0) {
+    if ((method == HTTP_METHOD_POST || method == HTTP_METHOD_PUT) && body && body_len > 0) {
         char content_length_hdr[64];
         snprintf(content_length_hdr, sizeof(content_length_hdr), "Content-Length: %zu\r\n", body_len);
         strcat(full_request, content_length_hdr);
@@ -329,7 +338,7 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
     if (err != HTTP_TEST_CLIENT_OK) {
         return err;
     }
-    if (method == HTTP_METHOD_POST && body && body_len > 0) {
+    if ((method == HTTP_METHOD_POST || method == HTTP_METHOD_PUT) && body && body_len > 0) {
         err = send_data(client_handle->sockfd, body, body_len, timeout_ms);
         if (err != HTTP_TEST_CLIENT_OK) {
             return err;

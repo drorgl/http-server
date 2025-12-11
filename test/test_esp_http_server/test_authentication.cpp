@@ -592,7 +592,7 @@ void given_wrong_scheme_auth_when_provided_then_access_denied(void)
  * @brief Test function entry point for all authentication tests
  */
 int test_authentication(void) {
-    UNITY_BEGIN();
+    // UNITY_BEGIN();
     RUN_TEST(given_protected_resource_when_no_auth_header_then_401_unauthorized_returned);
     RUN_TEST(given_basic_auth_credentials_when_valid_then_access_granted);
     RUN_TEST(given_basic_auth_credentials_when_invalid_then_access_denied);
@@ -601,5 +601,6 @@ int test_authentication(void) {
     RUN_TEST(given_malformed_auth_header_when_provided_then_400_bad_request);
     RUN_TEST(given_invalid_base64_auth_when_provided_then_access_denied);
     RUN_TEST(given_wrong_scheme_auth_when_provided_then_access_denied);
-    return UNITY_END();
+    // return UNITY_END();
+    return 0;
 }

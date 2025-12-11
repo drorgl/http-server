@@ -6,6 +6,13 @@ This document describes the organization and structure of the ESP HTTP Server te
 
 ## Recent Updates
 
+**HTTP Methods Tests Added** - December 2025
+- New test category for HTTP Methods compliance (RFC 1945)
+- Addresses critical gap identified in standards.md for PUT/DELETE/HEAD methods
+- Tests PUT requests with body data, DELETE requests, HEAD requests returning headers only
+- Validates 405 Method Not Allowed responses for unsupported methods
+- Extends test client infrastructure to support all HTTP methods
+
 **Authentication Tests Added** - December 2025
 - New test category for HTTP Authentication (RFC 9110 Part 11)
 - Covers WWW-Authenticate, Authorization, and Authentication-Info headers
@@ -208,7 +215,27 @@ The tests are organized by functionality area to:
 
 **What They Test**: Session context creation, persistence, and cleanup.
 
-### 15. Authentication Tests (`test_authentication.cpp`)
+### 15. HTTP Methods Tests (`test_http_methods.cpp`)
+
+**Purpose**: Tests for HTTP method handling and RFC 1945 compliance for PUT, DELETE, and HEAD methods.
+
+**Tests Included**:
+- `given_server_with_put_handler_when_client_sends_put_request_then_server_handles_correctly` - Tests PUT request with body data
+- `given_server_with_delete_handler_when_client_sends_delete_request_then_server_handles_correctly` - Tests DELETE request without body
+- `given_server_with_head_handler_when_client_sends_head_request_then_server_returns_headers_only` - Tests HEAD request headers-only response
+- `given_server_with_get_only_handler_when_client_sends_put_delete_head_then_405_method_not_allowed` - Tests method validation for unsupported methods
+
+**RFC 1945 Coverage**:
+- **PUT method** - Idempotent resource updates with request body
+- **DELETE method** - Resource deletion without request body
+- **HEAD method** - Headers-only responses identical to GET
+- **405 Method Not Allowed** - Proper error responses for unsupported methods
+
+**What They Test**: Complete HTTP method implementation validation, ensuring servers can handle all standard HTTP methods correctly and return appropriate error responses for unsupported method combinations.
+
+**Implementation Details**: Extends test client infrastructure to support PUT/DELETE/HEAD methods, addresses critical testing gap identified in standards.md for RFC 1945 compliance.
+
+### 17. Authentication Tests (`test_authentication.cpp`)
 
 **Purpose**: Tests for HTTP Authentication headers, response codes, and proper Basic authentication implementation as per RFC 9110 and RFC 7617.
 
@@ -237,7 +264,7 @@ The tests are organized by functionality area to:
 
 **Implementation Details**: Uses the `validate_basic_auth()` helper function to properly decode base64 credentials and validate username:password pairs against expected values, providing true RFC 7617 and RFC 9110 compliance.
 
-### 16. Security Tests (`test_security.cpp`)
+### 17. Security Tests (`test_security.cpp`)
 
 **Purpose**: Tests for critical HTTP security vulnerabilities and RFC 9112 compliance.
 

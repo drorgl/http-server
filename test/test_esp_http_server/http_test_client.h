@@ -34,7 +34,9 @@ typedef struct {
 typedef enum {
     HTTP_METHOD_GET,
     HTTP_METHOD_POST,
-    // Add other methods as needed
+    HTTP_METHOD_PUT,
+    HTTP_METHOD_DELETE,
+    HTTP_METHOD_HEAD
 } http_method_t;
 
 typedef struct {
