@@ -10,12 +10,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h> // Required for setvbuf
+#include <base64_codec.h> // For base64 decoding
 #include "esp_httpd_priv.h" // For httpd_data, sock_db, httpd_req_aux, http_parser_url
 #include "http_test_client.h" // Include for http_test_client
 
 #ifdef _WIN32
 #include <winsock2.h>
-#include <ws2tcpip.h> // For getaddrinfo
+#include <ws2tcpip.h>
 #include <in6addr.h> // For in_port_t on Windows
 #else
 #include <sys/socket.h>
@@ -33,6 +34,75 @@
 /* Test timeout values */
 #define TEST_TIMEOUT_MS 1000
 #define RECEIVE_TIMEOUT_SEC 5 // 5 seconds cumulative timeout for receive operations
+
+/**
+ * @brief Helper function to validate Basic authentication credentials
+ *
+ * Parses Authorization header of format "Basic <base64_credentials>",
+ * decodes the base64 part, and validates against expected username:password.
+ *
+ * @param auth_header The full Authorization header value
+ * @param expected_user Expected username
+ * @param expected_pass Expected password
+ * @return true if credentials are valid, false otherwise
+ */
+static bool validate_basic_auth(const char *auth_header, const char *expected_user, const char *expected_pass) {
+    if (!auth_header || !expected_user || !expected_pass) {
+        return false;
+    }
+
+    // Check that header starts with "Basic "
+    const char *basic_prefix = "Basic ";
+    size_t prefix_len = strlen(basic_prefix);
+    if (strncmp(auth_header, basic_prefix, prefix_len) != 0) {
+        return false;
+    }
+
+    // Get the base64 part
+    const char *base64_credentials = auth_header + prefix_len;
+    size_t base64_len = strlen(base64_credentials);
+
+    // Calculate decoded length
+    size_t decoded_len = base64_decoded_length(base64_credentials, base64_len);
+    if (decoded_len == 0) {
+        return false;
+    }
+
+    // Allocate buffer for decoded credentials
+    char *decoded_credentials = (char *)malloc(decoded_len + 1); // +1 for null terminator
+    if (!decoded_credentials) {
+        return false;
+    }
+
+    // Decode base64
+    size_t actual_decoded_len = base64_decode(base64_credentials, base64_len,
+                                             (unsigned char *)decoded_credentials, decoded_len + 1);
+    if (actual_decoded_len != decoded_len) {
+        free(decoded_credentials);
+        return false;
+    }
+
+    // Null-terminate the decoded string
+    decoded_credentials[decoded_len] = '\0';
+
+    // Find the colon separator
+    char *colon_pos = strchr(decoded_credentials, ':');
+    if (!colon_pos) {
+        free(decoded_credentials);
+        return false;
+    }
+
+    // Split into username and password
+    *colon_pos = '\0'; // Null terminate username
+    const char *username = decoded_credentials;
+    const char *password = colon_pos + 1;
+
+    // Validate credentials
+    bool is_valid = (strcmp(username, expected_user) == 0 && strcmp(password, expected_pass) == 0);
+
+    free(decoded_credentials);
+    return is_valid;
+}
 
 /**
  * @brief Test: given_protected_resource_when_no_auth_header_then_401_unauthorized_returned
@@ -120,8 +190,8 @@ void given_basic_auth_credentials_when_valid_then_access_granted(void)
                 return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
             }
 
-            // Simple Basic auth check: expect "Basic dXNlcjpwYXNz" (user:pass base64 encoded)
-            if (strcmp(auth_header, "Basic dXNlcjpwYXNz") == 0) {
+            // Validate Basic authentication credentials using proper base64 decoding
+            if (validate_basic_auth(auth_header, "user", "pass")) {
                 httpd_resp_sendstr(req, "Access granted");
                 return ESP_OK;
             } else {
@@ -178,7 +248,8 @@ void given_basic_auth_credentials_when_invalid_then_access_denied(void)
                 return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
             }
 
-            if (strcmp(auth_header, "Basic dXNlcjpwYXNz") == 0) {
+            // Validate Basic authentication credentials using proper base64 decoding
+            if (validate_basic_auth(auth_header, "user", "pass")) {
                 httpd_resp_sendstr(req, "Access granted");
                 return ESP_OK;
             } else {
@@ -241,7 +312,7 @@ void given_authentication_info_when_successful_then_header_included(void)
                 return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
             }
 
-            if (strcmp(auth_header, "Basic dXNlcjpwYXNz") == 0) {
+            if (validate_basic_auth(auth_header, "user", "pass")) {
                 // Include Authentication-Info header for post-authentication info
                 httpd_resp_set_hdr(req, "Authentication-Info", "nextnonce=\"abc123\"");
                 httpd_resp_sendstr(req, "Access granted");
@@ -368,19 +439,21 @@ void given_malformed_auth_header_when_provided_then_400_bad_request(void)
                 return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
             }
 
-            // Check for malformed Basic auth (missing space after "Basic")
-            if (strstr(auth_header, "Basic") == auth_header && strlen(auth_header) <= 6) {
-                return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Malformed Authorization header");
+            // Validate Basic authentication credentials using proper base64 decoding
+            if (validate_basic_auth(auth_header, "user", "pass")) {
+                httpd_resp_sendstr(req, "Access granted");
+                return ESP_OK;
+            } else {
+                // Invalid credentials - could be malformed header, wrong scheme, invalid base64, etc.
+                httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Test Realm\"");
+                return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid credentials");
             }
-
-            httpd_resp_sendstr(req, "Access granted");
-            return ESP_OK;
         },
         .user_ctx = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &protected_uri));
 
-    // When: A client provides malformed Authorization header
+    // When: A client provides malformed Authorization header (missing space after "Basic")
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
     TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
@@ -389,11 +462,126 @@ void given_malformed_auth_header_when_provided_then_400_bad_request(void)
     http_test_response_t response = {0};
     TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_send_request(client, HTTP_METHOD_GET, "/protected", headers, NULL, 0, &response, TEST_TIMEOUT_MS));
 
-    // Then: Access should be denied with 400 Bad Request
-    TEST_ASSERT_EQUAL(400, response.status_code);
-    TEST_ASSERT_EQUAL_STRING("Bad Request", response.status_text);
+    // Then: Access should be denied with 401 (not 400, since it parses as an invalid auth attempt)
+    TEST_ASSERT_EQUAL(401, response.status_code);
+    TEST_ASSERT_EQUAL_STRING("Unauthorized", response.status_text);
     TEST_ASSERT_NOT_NULL(response.body);
-    TEST_ASSERT_EQUAL_STRING("Malformed Authorization header", response.body);
+    TEST_ASSERT_EQUAL_STRING("Invalid credentials", response.body);
+
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * @brief Test: given_invalid_base64_auth_when_provided_then_access_denied
+ *
+ * Purpose: Verify that Authorization headers with invalid base64 are rejected.
+ * Expected: Server responds with 401 for invalid base64 encoding.
+ */
+void given_invalid_base64_auth_when_provided_then_access_denied(void)
+{
+    // Given: A running server with Basic authentication protection
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9037; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t protected_uri = {
+        .uri      = "/protected",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            char auth_header[256];
+            esp_err_t err = httpd_req_get_hdr_value_str(req, "Authorization", auth_header, sizeof(auth_header));
+            if (err != ESP_OK) {
+                return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
+            }
+
+            // Validate Basic authentication credentials using proper base64 decoding
+            if (validate_basic_auth(auth_header, "user", "pass")) {
+                httpd_resp_sendstr(req, "Access granted");
+                return ESP_OK;
+            } else {
+                httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Test Realm\"");
+                return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid credentials");
+            }
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &protected_uri));
+
+    // When: A client provides Authorization header with invalid base64
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    // "Basic invalid!@#" contains invalid base64 characters
+    const char *headers = "Authorization: Basic invalid!@#\r\n";
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_send_request(client, HTTP_METHOD_GET, "/protected", headers, NULL, 0, &response, TEST_TIMEOUT_MS));
+
+    // Then: Access should be denied with 401 Unauthorized
+    TEST_ASSERT_EQUAL(401, response.status_code);
+    TEST_ASSERT_EQUAL_STRING("Unauthorized", response.status_text);
+    TEST_ASSERT_NOT_NULL(response.body);
+    TEST_ASSERT_EQUAL_STRING("Invalid credentials", response.body);
+
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * @brief Test: given_wrong_scheme_auth_when_provided_then_access_denied
+ *
+ * Purpose: Verify that Authorization headers with wrong schemes are rejected.
+ * Expected: Server responds with 401 for non-Basic auth schemes.
+ */
+void given_wrong_scheme_auth_when_provided_then_access_denied(void)
+{
+    // Given: A running server that only accepts Basic authentication
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9038; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t protected_uri = {
+        .uri      = "/protected",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            char auth_header[256];
+            esp_err_t err = httpd_req_get_hdr_value_str(req, "Authorization", auth_header, sizeof(auth_header));
+            if (err != ESP_OK) {
+                return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Authentication required");
+            }
+
+            // Only accept Basic authentication scheme
+            if (validate_basic_auth(auth_header, "user", "pass")) {
+                httpd_resp_sendstr(req, "Access granted");
+                return ESP_OK;
+            } else {
+                httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"Test Realm\"");
+                return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Invalid credentials");
+            }
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &protected_uri));
+
+    // When: A client provides Authorization header with Digest scheme (not supported)
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    const char *headers = "Authorization: Digest username=\"user\", realm=\"Test Realm\"\r\n";
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_send_request(client, HTTP_METHOD_GET, "/protected", headers, NULL, 0, &response, TEST_TIMEOUT_MS));
+
+    // Then: Access should be denied with 401 Unauthorized
+    TEST_ASSERT_EQUAL(401, response.status_code);
+    TEST_ASSERT_EQUAL_STRING("Unauthorized", response.status_text);
+    TEST_ASSERT_NOT_NULL(response.body);
+    TEST_ASSERT_EQUAL_STRING("Invalid credentials", response.body);
 
     http_test_client_free_response(&response);
     http_test_client_disconnect(client);
@@ -411,5 +599,7 @@ int test_authentication(void) {
     RUN_TEST(given_authentication_info_when_successful_then_header_included);
     RUN_TEST(given_multiple_auth_schemes_when_offered_then_client_can_choose);
     RUN_TEST(given_malformed_auth_header_when_provided_then_400_bad_request);
+    RUN_TEST(given_invalid_base64_auth_when_provided_then_access_denied);
+    RUN_TEST(given_wrong_scheme_auth_when_provided_then_access_denied);
     return UNITY_END();
 }

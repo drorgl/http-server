@@ -205,25 +205,32 @@ The tests are organized by functionality area to:
 
 ### 15. Authentication Tests (`test_authentication.cpp`)
 
-**Purpose**: Tests for HTTP Authentication headers and response codes. Note: These tests validate authentication flow logic but do NOT implement standard HTTP Basic authentication.
+**Purpose**: Tests for HTTP Authentication headers, response codes, and proper Basic authentication implementation as per RFC 9110 and RFC 7617.
 
 **Tests Included**:
 - `given_protected_resource_when_no_auth_header_then_401_unauthorized_returned` - Tests WWW-Authenticate header and 401 response for missing auth
-- `given_basic_auth_credentials_when_valid_then_access_granted` - Tests hardcoded Authorization header string comparison (mock auth)
-- `given_basic_auth_credentials_when_invalid_then_access_denied` - Tests hardcoded Authorization header string comparison (mock auth)
+- `given_basic_auth_credentials_when_valid_then_access_granted` - Tests valid Basic auth with proper base64 decoding and credential validation
+- `given_basic_auth_credentials_when_invalid_then_access_denied` - Tests invalid Basic auth credentials with proper base64 decoding
 - `given_authentication_info_when_successful_then_header_included` - Tests Authentication-Info header inclusion
 - `given_multiple_auth_schemes_when_offered_then_client_can_choose` - Tests multiple authentication schemes in WWW-Authenticate
-- `given_malformed_auth_header_when_provided_then_400_bad_request` - Tests malformed Authorization header handling
+- `given_malformed_auth_header_when_provided_then_400_bad_request` - Tests malformed Authorization headers
+- `given_invalid_base64_auth_when_provided_then_access_denied` - Tests Authorization headers with invalid base64 encoding
+- `given_wrong_scheme_auth_when_provided_then_access_denied` - Tests unsupported authentication schemes
 
-**RFC 9110 Coverage** (Headers Only):
+**RFC 9110 Coverage**:
 - **WWW-Authenticate header field** (Section 11.6.1) - Authentication challenges
 - **Authorization header field** (Section 11.6.2) - Client credentials
 - **Authentication-Info header field** (Section 11.6.3) - Post-authentication information
 - **Authentication scheme extensibility** (Section 16.4) - Multiple auth schemes
 
-**What They Test**: HTTP authentication headers and response codes, but using mock credential validation (string comparison) rather than proper base64 decoding and username/password verification as per RFC 7617 Basic authentication.
+**RFC 7617 Coverage** (Basic Authentication):
+- **Basic authentication scheme** - Proper base64 decoding of credentials
+- **Username:password validation** - Correct parsing and verification
+- **Malformed credentials handling** - Invalid base64, wrong schemes, etc.
 
-**CRITICAL NOTE**: The tests do not implement standard HTTP Basic authentication. They perform hardcoded string comparisons against the "Authorization" header value instead of properly decoding base64 credentials. Base64 decoding functions exist in `lib/base64/`, but the test handlers bypass this entirely. For true compliance with RFC 7617 (Basic auth) and RFC 9110 (general auth), the handlers should decode the "Basic <base64>" value, verify username:password pairs, and reject invalid credentials appropriately.
+**What They Test**: Complete HTTP Basic authentication implementation with proper RFC 7617 base64 decoding, credential validation, error handling, and RFC 9110 header support.
+
+**Implementation Details**: Uses the `validate_basic_auth()` helper function to properly decode base64 credentials and validate username:password pairs against expected values, providing true RFC 7617 and RFC 9110 compliance.
 
 ## Dependencies
 
