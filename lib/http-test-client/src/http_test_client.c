@@ -390,18 +390,23 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
     }
     *status_line_end = '\0';
 
-    char *http_version = strtok(recv_buf, " ");
-    char *status_code_str = strtok(NULL, " ");
-    char *status_text_ptr = strtok(NULL, "\0"); // Rest of the line is status text
-
-    if (!http_version || !status_code_str || !status_text_ptr) {
-        LOGD(TAG, "Could not find version, code or status");
+    // Parse status line: "HTTP/1.1 401 Unauthorized"
+    int status_code;
+    char status_text[256];
+    int parsed = sscanf(recv_buf, "HTTP/%*d.%*d %d %[^\r\n]", &status_code, status_text);
+    if (parsed < 1) {
+        LOGD(TAG, "Could not parse status code");
         return HTTP_TEST_CLIENT_ERR_PROTOCOL;
     }
 
-    response->status_code = atoi(status_code_str);
-    strncpy(response->status_text, status_text_ptr, sizeof(response->status_text) - 1);
+    response->status_code = status_code;
+    strncpy(response->status_text, status_text, sizeof(response->status_text) - 1);
     response->status_text[sizeof(response->status_text) - 1] = '\0';
+
+    if (parsed == 1) {
+        // No status text present
+        strcpy(response->status_text, "");
+    }
 
     // Copy headers
     response->headers = strdup(status_line_end + 2); // Skip "\r\n" after status line
@@ -736,7 +741,7 @@ const char* http_test_client_get_header(const http_test_response_t *response, co
         // Check if the current line starts with the header_name (case-insensitive)
         // and is followed by a colon
 
-        if (strncasecmp_custom( header_name,current_pos, name_len) == 0 &&
+        if (strncasecmp_custom(current_pos, header_name, name_len) == 0 &&
             current_pos[name_len] == ':') {
             
             // Found the header, now extract the value
@@ -762,6 +767,18 @@ const char* http_test_client_get_header(const http_test_response_t *response, co
             strncpy(header_value, value_start, value_len);
             header_value[value_len] = '\0';
             return header_value;
+        }
+
+        // Debug: Print the current line being processed
+        char *line_end = strstr(current_pos, "\r\n");
+        if (line_end) {
+            size_t line_len = line_end - current_pos;
+            char line[256];
+            if (line_len < sizeof(line)) {
+                strncpy(line, current_pos, line_len);
+                line[line_len] = '\0';
+                printf("DEBUG: Processing line: '%s'\n", line);
+            }
         }
 
         // Move to the next line
