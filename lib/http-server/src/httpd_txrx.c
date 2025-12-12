@@ -220,14 +220,44 @@ esp_err_t httpd_resp_set_hdr(httpd_req_t *r, const char *field, const char *valu
     struct httpd_req_aux *ra = r->aux;
     struct httpd_data *hd = (struct httpd_data *) r->handle;
 
+    /* Check if header already exists and overwrite if so */
+    for (unsigned i = 0; i < ra->resp_hdrs_count; i++) {
+        if (strcmp(ra->resp_hdrs[i].field, field) == 0) {
+            /* Free existing allocations */
+            free(ra->resp_hdrs[i].field);
+            free(ra->resp_hdrs[i].value);
+            /* Duplicate new field and value */
+            ra->resp_hdrs[i].field = strdup(field);
+            ra->resp_hdrs[i].value = strdup(value);
+            if (!ra->resp_hdrs[i].field || !ra->resp_hdrs[i].value) {
+                /* Allocation failed, free anything that was allocated */
+                free(ra->resp_hdrs[i].field);
+                free(ra->resp_hdrs[i].value);
+                ra->resp_hdrs[i].field = NULL;
+                ra->resp_hdrs[i].value = NULL;
+                return ESP_ERR_NO_MEM;
+            }
+            LOGD(TAG, LOG_FMT("updated header = %s: %s"), field, value);
+            return ESP_OK;
+        }
+    }
+
     /* Number of additional headers is limited */
     if (ra->resp_hdrs_count >= hd->config.max_resp_headers) {
         return ESP_ERR_HTTPD_RESP_HDR;
     }
 
-    /* Assign header field-value pair */
-    ra->resp_hdrs[ra->resp_hdrs_count].field = field;
-    ra->resp_hdrs[ra->resp_hdrs_count].value = value;
+    /* Duplicate field and value strings */
+    ra->resp_hdrs[ra->resp_hdrs_count].field = strdup(field);
+    ra->resp_hdrs[ra->resp_hdrs_count].value = strdup(value);
+    if (!ra->resp_hdrs[ra->resp_hdrs_count].field || !ra->resp_hdrs[ra->resp_hdrs_count].value) {
+        /* Allocation failed, free anything that was allocated */
+        free(ra->resp_hdrs[ra->resp_hdrs_count].field);
+        free(ra->resp_hdrs[ra->resp_hdrs_count].value);
+        ra->resp_hdrs[ra->resp_hdrs_count].field = NULL;
+        ra->resp_hdrs[ra->resp_hdrs_count].value = NULL;
+        return ESP_ERR_NO_MEM;
+    }
     ra->resp_hdrs_count++;
 
     LOGD(TAG, LOG_FMT("new header = %s: %s"), field, value);
@@ -338,6 +368,9 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
     }
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_HEADERS_SENT, &(ra->sd->fd), sizeof(int));
 
+    /* Free response headers memory allocations after sending headers */
+    httpd_resp_hdrs_free(ra);
+
     /* Sending content */
     if (buf && buf_len) {
         if (httpd_send_all(r, buf, buf_len) != ESP_OK) {
@@ -411,6 +444,9 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
             return ESP_ERR_HTTPD_RESP_SEND;
         }
         ra->first_chunk_sent = true;
+
+        /* Free response headers memory allocations after sending headers */
+        httpd_resp_hdrs_free(ra);
     }
 
     /* Sending chunked content */
@@ -683,7 +719,25 @@ esp_err_t httpd_req_async_handler_begin(httpd_req_t *r, httpd_req_t **out)
         free(async);
         return ESP_ERR_NO_MEM;
     }
-    memcpy(async_aux->resp_hdrs, r_aux->resp_hdrs, hd->config.max_resp_headers * sizeof(struct resp_hdr));
+
+    // Deep copy response headers with string duplication
+    for (unsigned i = 0; i < r_aux->resp_hdrs_count; i++) {
+        async_aux->resp_hdrs[i].field = r_aux->resp_hdrs[i].field ? strdup(r_aux->resp_hdrs[i].field) : NULL;
+        async_aux->resp_hdrs[i].value = r_aux->resp_hdrs[i].value ? strdup(r_aux->resp_hdrs[i].value) : NULL;
+        if ((r_aux->resp_hdrs[i].field && !async_aux->resp_hdrs[i].field) ||
+            (r_aux->resp_hdrs[i].value && !async_aux->resp_hdrs[i].value)) {
+            // Free any allocated strings on failure
+            for (unsigned j = 0; j <= i; j++) {
+                free(async_aux->resp_hdrs[j].field);
+                free(async_aux->resp_hdrs[j].value);
+            }
+            free(async_aux->resp_hdrs);
+            free(async_aux);
+            free(async);
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    async_aux->resp_hdrs_count = r_aux->resp_hdrs_count;
 
     // Prevent the main thread from reading the rest of the request after the handler returns.
     r_aux->remaining_len = 0;
@@ -705,6 +759,8 @@ esp_err_t httpd_req_async_handler_complete(httpd_req_t *r)
     struct httpd_req_aux *ra = r->aux;
     ra->sd->for_async_req = false;
 
+    /* Free response headers memory allocations */
+    httpd_resp_hdrs_free(ra);
     free(ra->resp_hdrs);
     free(r->aux);
     free(r);
@@ -825,4 +881,18 @@ int httpd_socket_recv(httpd_handle_t hd, int sockfd, char *buf, size_t buf_len, 
         return HTTPD_SOCK_ERR_INVALID;
     }
     return sess->recv_fn(hd, sockfd, buf, buf_len, flags);
+}
+
+/**
+ * @brief   Free response headers memory allocations
+ */
+void httpd_resp_hdrs_free(struct httpd_req_aux *ra)
+{
+    for (unsigned i = 0; i < ra->resp_hdrs_count; i++) {
+        free(ra->resp_hdrs[i].field);
+        ra->resp_hdrs[i].field = NULL;
+        free(ra->resp_hdrs[i].value);
+        ra->resp_hdrs[i].value = NULL;
+    }
+    ra->resp_hdrs_count = 0;
 }

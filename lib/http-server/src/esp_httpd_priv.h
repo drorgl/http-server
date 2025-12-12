@@ -111,8 +111,8 @@ struct httpd_req_aux {
     unsigned        req_hdrs_count;                 /*!< Count of total headers in request packet */
     unsigned        resp_hdrs_count;                /*!< Count of additional headers in response packet */
     struct resp_hdr {
-        const char *field;
-        const char *value;
+        char *field;
+        char *value;
     } *resp_hdrs;                                   /*!< Additional headers in response packet */
     struct http_parser_url url_parse_res;           /*!< URL parsing result, used for retrieving URL elements */
 #ifdef CONFIG_HTTPD_WS_SUPPORT
@@ -507,6 +507,13 @@ int httpd_default_send(httpd_handle_t hd, int sockfd, const char *buf, size_t bu
  *  - -1             : if failed (appropriate errno is set)
  */
 int httpd_default_recv(httpd_handle_t hd, int sockfd, char *buf, size_t buf_len, int flags);
+
+/**
+ * @brief   Free response headers memory allocations
+ *
+ * @param[in] ra     Pointer to request auxiliary data
+ */
+void httpd_resp_hdrs_free(struct httpd_req_aux *ra);
 
 /** End of Group : Send and Receive
  * @}

@@ -65,7 +65,6 @@ int test_esp_http_server(){
         test_authentication() |
         test_security() |
         test_http_methods();
-
 }
 
 #ifdef __cplusplus

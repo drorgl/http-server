@@ -41,8 +41,10 @@ int cs_create_ctrl_sock(int port)
     return -1;
 #endif
 
+    LOGD(TAG, "creating control socket on port %d", port);
     int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (fd < 0) {
+        LOGE(TAG, "error creating control socket (%d)", errno);
         return -1;
     }
 
@@ -71,19 +73,23 @@ int cs_create_ctrl_sock(int port)
 
     ret = bind(fd, (struct sockaddr *)&addr, addr_len);
     if (ret < 0) {
+        LOGE(TAG, "error binding control socket (%d)", errno);
         close(fd);
         return -1;
     }
+    LOGD(TAG, "control socket created successfully fd=%d", fd);
     return fd;
 }
 
 void cs_free_ctrl_sock(int fd)
 {
+    LOGD(TAG, "freeing control socket fd=%d", fd);
     close(fd);
 }
 
 int cs_send_to_ctrl_sock(int send_fd, int port, void *data, unsigned int data_len)
 {
+    LOGD(TAG, "sending to control socket on port %d", port);
     int ret;
     struct sockaddr_storage to_addr = {};
     socklen_t addr_len = 0;
@@ -103,6 +109,7 @@ int cs_send_to_ctrl_sock(int send_fd, int port, void *data, unsigned int data_le
     ret = sendto(send_fd, data, data_len, 0, (struct sockaddr *)&to_addr, addr_len);
 
     if (ret < 0) {
+        LOGE(TAG, "error sending to control socket (%d)", errno);
         return -1;
     }
     return ret;
@@ -110,10 +117,12 @@ int cs_send_to_ctrl_sock(int send_fd, int port, void *data, unsigned int data_le
 
 int cs_recv_from_ctrl_sock(int fd, void *data, unsigned int data_len)
 {
+    LOGD(TAG, "receiving from control socket");
     int ret;
     ret = recvfrom(fd, data, data_len, 0, NULL, NULL);
 
     if (ret < 0) {
+        LOGE(TAG, "error receiving from control socket (%d)", errno);
         return -1;
     }
     return ret;

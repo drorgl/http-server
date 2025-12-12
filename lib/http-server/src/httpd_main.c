@@ -262,7 +262,7 @@ void *httpd_get_global_transport_ctx(httpd_handle_t handle)
 static void httpd_process_ctrl_msg(struct httpd_data *hd)
 {
     struct httpd_ctrl_data msg;
-    int ret = recv(hd->ctrl_fd, (char*)&msg, sizeof(msg), 0);
+    int ret = cs_recv_from_ctrl_sock(hd->ctrl_fd, &msg, sizeof(msg));
     if (ret <= 0) {
         LOGW(TAG, LOG_FMT("error in recv (%d)"), errno);
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
@@ -412,7 +412,7 @@ static void httpd_thread(void *arg)
     LOGD(TAG, LOG_FMT("web server exiting"));
     close(hd->msg_fd);
     LOGD(TAG, LOG_FMT("free control socket"));
-    // cs_free_ctrl_sock(hd->ctrl_fd);
+    cs_free_ctrl_sock(hd->ctrl_fd);
     LOGD(TAG, LOG_FMT("close sessions"));
     httpd_sess_close_all(hd);
     LOGD(TAG, LOG_FMT("close listen socket"));
@@ -662,6 +662,8 @@ esp_err_t httpd_stop(httpd_handle_t handle)
     while (hd->hd_td.status != THREAD_STOPPED) {
         httpd_os_thread_sleep(100);
     }
+    httpd_os_thread_sleep(100);
+
 
     /* Release global user context, if not NULL */
     if (hd->config.global_user_ctx) {

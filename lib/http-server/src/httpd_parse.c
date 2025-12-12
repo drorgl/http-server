@@ -724,6 +724,9 @@ static void httpd_req_cleanup(httpd_req_t *r)
     ra->sd->free_ctx = r->free_ctx;
     ra->sd->ignore_sess_ctx_changes = r->ignore_sess_ctx_changes;
 
+    /* Free response headers memory allocations */
+    httpd_resp_hdrs_free(ra);
+
     /* Clear out the request and request_aux structures */
     ra->sd = NULL;
     r->handle = NULL;
