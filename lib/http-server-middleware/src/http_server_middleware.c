@@ -5,6 +5,15 @@
 #include "../include/http_server_middleware.h"
 
 /**
+ * @brief Default URI matching function when uri_match_wildcard is NULL
+ */
+static bool default_uri_match_wildcard(const char *uri_template, const char *uri, size_t match_upto) {
+    // If no callback provided, fall back to prefix match using template length
+    size_t template_len = strlen(uri_template);
+    return strncmp(uri_template, uri, template_len) == 0;
+}
+
+/**
  * @brief Context structure for wrapped handlers
  */
 typedef struct wrapped_handler_ctx {
@@ -31,7 +40,11 @@ static esp_err_t wrapped_handler(httpd_req_t *req)
 
         // URI pattern wildcard matching
         if (config->uri_pattern != NULL) {
-            if (!config->uri_match_wildcard(config->uri_pattern, req->uri, strlen(req->uri))) {
+            // Use provided callback or default implementation
+            bool (*match_fn)(const char *, const char *, size_t) = 
+                config->uri_match_wildcard ? config->uri_match_wildcard : default_uri_match_wildcard;
+            
+            if (!match_fn(config->uri_pattern, req->uri, strlen(req->uri))) {
                 continue;  // URI doesn't match, skip this middleware
             }
         }
