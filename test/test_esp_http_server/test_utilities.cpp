@@ -437,6 +437,7 @@ void dummy(void)
 
 int test_utilities(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_request_with_multiple_headers_when_calling_httpd_req_get_hdr_value_str_then_returns_correct_values);
     RUN_TEST(given_headers_with_last_header_no_crlf_when_get_header_then_returns_correct_value);
     RUN_TEST(given_valid_request_with_body_when_calling_httpd_req_recv_then_receives_data);

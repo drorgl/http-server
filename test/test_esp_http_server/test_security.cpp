@@ -453,6 +453,7 @@ void test_response_splitting_prevention_in_custom_status(void)
  * Runs all security vulnerability tests required for RFC 9112 compliance.
  */
 int test_security(void) {
+    UNITY_BEGIN();
     // Response Splitting Attack Prevention
     RUN_TEST(test_response_splitting_prevention_in_custom_headers);
     RUN_TEST(test_response_splitting_prevention_in_custom_status);
@@ -466,5 +467,5 @@ int test_security(void) {
 
     // Request Smuggling Prevention
     RUN_TEST(test_request_smuggling_content_length_mismatch);
-    return 0;
+    return UNITY_END();
 }

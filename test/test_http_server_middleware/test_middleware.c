@@ -23,7 +23,9 @@ int test_middleware() {
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0); // Disable buffering for stdout
     setvbuf(stderr, NULL, _IONBF, 0); // Disable buffering for stderr
-    return test_middleware();
+    UNITY_BEGIN();
+    test_middleware();
+    return UNITY_END();
 }
 
 void app_main(void) {

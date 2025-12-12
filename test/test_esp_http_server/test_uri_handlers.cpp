@@ -261,6 +261,7 @@ void given_multiple_handlers_for_same_uri_when_unregistering_uri_then_all_handle
 
 int test_uri_handlers(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_started_when_registering_valid_uri_handler_then_returns_success);
     RUN_TEST(given_null_handler_when_registering_uri_handler_then_returns_invalid_arg);
     RUN_TEST(given_registered_uri_handler_when_unregistering_same_handler_then_returns_success);

@@ -593,6 +593,7 @@ void given_wrong_scheme_auth_when_provided_then_access_denied(void)
  */
 int test_authentication(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_protected_resource_when_no_auth_header_then_401_unauthorized_returned);
     RUN_TEST(given_basic_auth_credentials_when_valid_then_access_granted);
     RUN_TEST(given_basic_auth_credentials_when_invalid_then_access_denied);

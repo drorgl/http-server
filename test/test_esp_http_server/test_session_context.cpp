@@ -117,6 +117,9 @@ void given_server_with_session_handler_when_client_posts_then_context_is_maintai
 
 
 int test_session_context(void) {
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_session_handler_when_client_posts_then_context_is_maintained);
+    // return UNITY_END();
     return 0;
 }

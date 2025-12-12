@@ -383,6 +383,7 @@ void given_ws_connection_when_client_sends_close_frame_then_server_responds_with
 
 int test_websocket_upgrade_handshake(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds);
     RUN_TEST(given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchanged_correctly);
     RUN_TEST(given_ws_connection_when_client_sends_close_frame_then_server_responds_with_close_and_closes_connection);
@@ -808,6 +809,7 @@ void given_ws_connection_when_idle_then_keep_alive_maintains_connection(void)
 
 int test_websocket(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_ws_handler_when_client_sends_upgrade_request_then_handshake_succeeds);
     RUN_TEST(given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchanged_correctly);
     RUN_TEST(given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds);
@@ -818,7 +820,6 @@ int test_websocket(void) {
     RUN_TEST(given_ws_connection_when_idle_then_keep_alive_maintains_connection);
     RUN_TEST(given_ws_connection_when_client_sends_ping_then_server_responds_with_pong);
 
-    // return UNITY_END();
-    test_websocket_upgrade_handshake();
-    return 0;
+    // return UNITY_END() | 
+    return test_websocket_upgrade_handshake();
 }

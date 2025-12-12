@@ -338,7 +338,8 @@ void test_auth_null_check_credentials_denies(void) {
 }
 
 int test_auth() {
-    UNITY_BEGIN();
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
 
     RUN_TEST(test_auth_with_non_basic_authorization_header);
     RUN_TEST(test_auth_with_valid_basic_authorization_header);
@@ -350,5 +351,6 @@ int test_auth() {
     RUN_TEST(test_auth_null_requires_auth_requires_all);
     RUN_TEST(test_auth_null_check_credentials_denies);
 
-    return UNITY_END();
+    // return UNITY_END();
+    return 0;
 }

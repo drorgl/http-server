@@ -252,7 +252,8 @@ void test_cors_no_origin_header(void) {
 }
 
 int test_cors() {
-    UNITY_BEGIN();
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
 
     RUN_TEST(test_cors_allowed_origin);
     RUN_TEST(test_cors_wildcard_origin);
@@ -260,5 +261,6 @@ int test_cors() {
     RUN_TEST(test_cors_preflight_options);
     RUN_TEST(test_cors_no_origin_header);
 
-    return UNITY_END();
+    // return UNITY_END();
+    return 0;
 }

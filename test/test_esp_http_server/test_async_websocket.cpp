@@ -358,9 +358,12 @@ void given_closed_ws_connection_when_sending_async_then_callback_receives_error(
 }
 
 int test_async_websocket(void) {
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_ws_connection_when_sending_sync_from_another_task_then_succeeds);
     RUN_TEST(given_ws_connection_when_sending_async_from_another_task_then_succeeds);
     RUN_TEST(given_closed_ws_connection_when_sending_sync_then_fails);
     RUN_TEST(given_closed_ws_connection_when_sending_async_then_callback_receives_error);
+    // return UNITY_END();
     return 0;
 }

@@ -120,11 +120,13 @@ void test_logging_max_level(void) {
 }
 
 int test_logging() {
-    UNITY_BEGIN();
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
 
     RUN_TEST(test_logging_get_request);
     RUN_TEST(test_logging_different_levels);
     RUN_TEST(test_logging_max_level);
 
-    return UNITY_END();
+    // return UNITY_END();
+    return 0;
 }

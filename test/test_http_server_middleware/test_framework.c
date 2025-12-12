@@ -391,7 +391,8 @@ void test_middleware_null_inputs(void) {
 }
 
 int test_framework() {
-    UNITY_BEGIN();
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
 
     RUN_TEST(test_middleware_basic_wrapper);
     RUN_TEST(test_middleware_execution_order);
@@ -400,5 +401,6 @@ int test_framework() {
     RUN_TEST(test_middleware_uri_pattern_filtering);
     RUN_TEST(test_middleware_null_inputs);
 
-    return UNITY_END();
+    // return UNITY_END();
+    return 0;
 }

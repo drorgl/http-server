@@ -207,6 +207,8 @@ void given_null_config_when_httpd_start_is_called_then_returns_invalid_arg(void)
 
 int test_server_lifecycle(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
+
     RUN_TEST(given_valid_httpd_config_when_httpd_start_is_called_then_returns_success);
     RUN_TEST(given_null_handle_when_httpd_start_is_called_then_returns_invalid_arg);
     RUN_TEST(given_started_server_when_httpd_stop_is_called_then_server_stops);

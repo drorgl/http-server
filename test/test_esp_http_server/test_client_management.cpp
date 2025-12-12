@@ -305,6 +305,7 @@ void given_server_with_multiple_clients_when_rapid_connections_then_server_handl
 
 int test_client_management(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_valid_server_when_calling_httpd_get_client_list_then_returns_client_fds);
     RUN_TEST(given_server_with_lru_enabled_when_max_sockets_exceeded_then_oldest_session_is_closed);
     RUN_TEST(given_server_with_open_close_callbacks_when_client_connects_and_disconnects_then_callbacks_are_invoked);

@@ -395,6 +395,7 @@ void given_valid_session_context_when_setting_and_getting_then_context_preserved
 
 int test_response_handling(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_valid_request_when_calling_httpd_resp_send_then_response_is_sent);
     RUN_TEST(given_server_with_resp_send_handler_when_client_requests_then_receives_response);
     RUN_TEST(given_server_with_custom_response_handler_when_client_requests_then_receives_custom_response);

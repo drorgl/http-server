@@ -92,6 +92,7 @@ void given_server_with_empty_header_handler_when_client_sends_request_with_empty
 
 int test_empty_header(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_empty_header_handler_when_client_sends_request_with_empty_header_then_it_is_handled_correctly);
     // return UNITY_END();
     return 0;

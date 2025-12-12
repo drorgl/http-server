@@ -85,6 +85,9 @@ void given_server_with_async_handler_when_client_requests_then_receives_response
 }
 
 int test_async_requests(void) {
+    // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_async_handler_when_client_requests_then_receives_response);
+    // return UNITY_END();
     return 0;
 }

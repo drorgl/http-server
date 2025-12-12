@@ -456,6 +456,7 @@ void test_httpd_req_get_cookie_val_invalid_args() {
 
 int test_request_processing(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_valid_request_when_calling_httpd_req_get_url_query_len_then_returns_query_length);
     RUN_TEST(given_various_url_queries_when_calling_httpd_req_get_url_query_len_then_returns_correct_length);
     RUN_TEST(given_valid_request_when_calling_httpd_req_get_hdr_value_len_then_returns_header_length);

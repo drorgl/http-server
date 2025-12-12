@@ -327,6 +327,7 @@ void given_server_with_get_only_handler_when_client_sends_put_delete_head_then_4
 
 int test_http_methods(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_put_handler_when_client_sends_put_request_then_server_handles_correctly);
     RUN_TEST(given_server_with_delete_handler_when_client_sends_delete_request_then_server_handles_correctly);
     RUN_TEST(given_server_with_head_handler_when_client_sends_head_request_then_server_returns_headers_only);

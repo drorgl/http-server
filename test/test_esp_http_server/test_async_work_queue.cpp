@@ -99,6 +99,7 @@ void given_server_with_async_work_queue_handler_when_client_gets_then_receives_t
 
 int test_async_work_queue(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_with_async_work_queue_handler_when_client_gets_then_receives_two_responses);
     // return UNITY_END();
     return 0;

@@ -662,6 +662,7 @@ void given_request_with_more_content_length_when_sent_then_server_handles_correc
 
 int test_error_handling(void) {
     // UNITY_BEGIN();
+    UnitySetTestFile(__FILE__);
     RUN_TEST(given_server_without_uri_handler_when_client_requests_unregistered_uri_then_404_not_found_is_returned);
     RUN_TEST(given_registered_uri_handler_for_get_when_post_request_then_405_method_not_allowed);
     RUN_TEST(given_server_running_when_request_without_version_is_sent_then_505_version_unsupported_is_returned);
