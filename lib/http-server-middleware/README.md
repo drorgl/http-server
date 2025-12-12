@@ -1,32 +1,31 @@
 # HTTP Server Middleware Library
 
-This library provides a middleware framework for the ESP HTTP Server, implementing the design specified in `middleware_design.md`. The middleware system enables pluggable, reusable components for handling cross-cutting concerns such as authentication, security, logging, and HTTP feature compliance.
-
-
+Provides a middleware framework for the ESP HTTP Server, implementing `middleware_design.md`. Enables pluggable components for authentication, security, logging, and HTTP compliance.
 
 ## Features Implemented (POC)
 
 ### Core Components
 - **Data Structures**: `httpd_middleware_config_t`, function types, wrapper context
 - **Wrapper Function**: `httpd_uri_wrap_with_middleware()` creates wrapped handlers
-- **Execution Engine**: Priority-ordered middleware execution with short-circuit support
+- **Execution Engine**: Array-position ordered middleware execution with short-circuit support
 
 ### Middleware Execution Model
-1. Middleware functions execute in **registration order** (array position order)
-2. Middleware execute before the original URI handler
-3. Each middleware can inspect `httpd_req_t`, `httpd_uri_t`, and context
-4. Middleware returns `ESP_OK` to continue or error to short-circuit
-5. Disabled middleware are skipped
-6. URI pattern filtering using wildcard matching
-7. HTTP method filtering support
+1. Middleware execute in registration order (array position)
+2. Run before the original URI handler
+3. Access `httpd_req_t`, `httpd_uri_t`, and context
+4. Return `ESP_OK` to continue or error to short-circuit
+5. Skip disabled middleware
+6. URI pattern filtering with wildcard matching
+7. HTTP method filtering
 
-### Example Middleware
-- **Logging**: Logs request details
-- **Authentication**: Callback-based Basic Auth (dynamic credential/path validation)
+### Middleware Available
+- **Logging**: Logs request details with configurable verbosity
+- **Authentication**: Callback-based Basic Auth with dynamic credentials and path bypass
+- **CORS**: Handles Cross-Origin Resource Sharing with preflight support
 
 ## Design Approach
 
-This implementation follows the **Dependency Injection** approach for maximum flexibility and testability, using callback function pointers injected at runtime. Middleware modules no longer directly call HTTP server functions, allowing for easy mocking in unit tests and cross-platform compatibility.
+Uses **Dependency Injection** with callback function pointers for flexibility and testability. No direct HTTP server calls - all operations via injected callbacks for mocking and cross-platform support.
 
 ### Dependency Injection
 
