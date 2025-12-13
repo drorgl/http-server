@@ -8,6 +8,7 @@
 #include "middleware_auth.h"
 #include "middleware_cors.h"
 #include "middleware_logging.h"
+#include "middleware_range.h"
 #include "http_test_client.h"
 
 #ifdef _WIN32
@@ -28,6 +29,48 @@ static esp_err_t echo_handler(httpd_req_t *req) {
     httpd_resp_send(req, "OK", 2);
     return ESP_OK;
 }
+
+static const char test_range_content[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz";
+static const long long test_range_content_len = sizeof(test_range_content) - 1; // Exclude null terminator
+
+static esp_err_t range_test_handler(httpd_req_t *req, const httpd_range_response_ctx_t *ctx) {
+    const httpd_range_request_t *range_req = ctx->request;
+
+    // For this test, we expect single ranges only since multiple ranges are disabled
+    if (range_req->range_count == 1) {
+        const httpd_range_spec_t *spec = &range_req->ranges[0];
+
+        long long start_pos = spec->has_start ? spec->start : 0;
+        long long end_pos = spec->has_end ? spec->end : (test_range_content_len - 1);
+
+        // Ensure bounds
+        if (start_pos < 0) start_pos = 0;
+        if (end_pos >= test_range_content_len) end_pos = test_range_content_len - 1;
+        if (start_pos > end_pos) {
+            return ESP_FAIL; // This should not happen if validation is correct
+        }
+
+        size_t content_len = (size_t)(end_pos - start_pos + 1);
+        const char *content = test_range_content + start_pos;
+
+        // Send partial content response
+        esp_err_t ret = httpd_resp_set_type(req, "text/plain");
+        if (ret != ESP_OK) return ret;
+
+        return httpd_resp_send_partial_content(req, content, content_len, start_pos, end_pos, test_range_content_len);
+    }
+
+    return ESP_FAIL;
+}
+
+static httpd_range_middleware_config_t range_cfg = {
+    .handler = range_test_handler,
+    .context = NULL,
+    .free_ctx = NULL,
+    .content_type = "text/plain",
+    .content_length = test_range_content_len,
+    .enable_multiple_ranges = false
+};
 
 static esp_err_t test_auth_check(const char *username, const char *password, void *ctx) {
     return (username && password && strcmp(username, "testuser") == 0 && strcmp(password, "testpass") == 0) ? ESP_OK : ESP_FAIL;
@@ -288,6 +331,329 @@ void test_e2e_logging_only(void) {
     httpd_os_thread_sleep(100); // Allow time for socket closure
 }
 
+void test_e2e_range_normal_request(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32773));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", NULL, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp.status_code);
+    TEST_ASSERT_EQUAL_MEMORY("OK", resp.body, resp.body_len);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_valid_single_range(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32774));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=10-20\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(206, resp.status_code);
+    TEST_ASSERT_EQUAL_MEMORY("KLMNOPQRSTU", resp.body, resp.body_len); // chars at positions 10-20
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes 10-20/62", content_range);
+    free((void*)content_range);
+    const char *accept_ranges = http_test_client_get_header(&resp, "Accept-Ranges");
+    TEST_ASSERT_NOT_NULL(accept_ranges);
+    TEST_ASSERT_EQUAL_STRING("bytes", accept_ranges);
+    free((void*)accept_ranges);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_valid_suffix_range(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32775));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=-10\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(206, resp.status_code);
+    TEST_ASSERT_EQUAL_MEMORY("qrstuvwxyz", resp.body, resp.body_len); // last 10 chars: qrstuvwxyz (positions 52-61)
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes 52-61/62", content_range);
+    free((void*)content_range);
+    const char *accept_ranges = http_test_client_get_header(&resp, "Accept-Ranges");
+    TEST_ASSERT_NOT_NULL(accept_ranges);
+    TEST_ASSERT_EQUAL_STRING("bytes", accept_ranges);
+    free((void*)accept_ranges);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_valid_open_ended_range(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32776));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=50-\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(206, resp.status_code);
+    TEST_ASSERT_EQUAL_MEMORY("opqrstuvwxyz", resp.body, resp.body_len); // chars from position 50 to end: opqrstuvwxyz (positions 50-61)
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes 50-61/62", content_range);
+    free((void*)content_range);
+    const char *accept_ranges = http_test_client_get_header(&resp, "Accept-Ranges");
+    TEST_ASSERT_NOT_NULL(accept_ranges);
+    TEST_ASSERT_EQUAL_STRING("bytes", accept_ranges);
+    free((void*)accept_ranges);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_invalid_malformed_range(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32777));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=abc-123\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for malformed range");
+    TEST_ASSERT_EQUAL(416, resp.status_code);
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes */62", content_range);
+    free((void*)content_range);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_invalid_out_of_bounds(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32778));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=100-200\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for out-of-bounds range");
+    TEST_ASSERT_EQUAL(416, resp.status_code);
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes */62", content_range);
+    free((void*)content_range);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_invalid_start_greater_than_end(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32779));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=30-20\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for invalid range");
+    TEST_ASSERT_EQUAL(416, resp.status_code);
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes */62", content_range);
+    free((void*)content_range);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
+void test_e2e_range_multiple_ranges_disabled(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_range,
+            .context = &range_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32780));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *range_hdr = "Range: bytes=10-20,30-40\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", range_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for multiple ranges");
+    TEST_ASSERT_EQUAL(416, resp.status_code);
+    const char *content_range = http_test_client_get_header(&resp, "Content-Range");
+    TEST_ASSERT_NOT_NULL(content_range);
+    TEST_ASSERT_EQUAL_STRING("bytes */62", content_range);
+    free((void*)content_range);
+    http_test_client_free_response(&resp);
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100); // Allow time for socket closure
+}
+
 void test_e2e_all_three(void) {
     http_test_client_err_t err;
     httpd_handle_t handle;
@@ -349,6 +715,14 @@ int test_e2e_middleware(void) {
     RUN_TEST(test_e2e_auth_only_null_uri_match);
     RUN_TEST(test_e2e_cors_only);
     RUN_TEST(test_e2e_logging_only);
+    RUN_TEST(test_e2e_range_normal_request);
+    RUN_TEST(test_e2e_range_valid_single_range);
+    RUN_TEST(test_e2e_range_valid_suffix_range);
+    RUN_TEST(test_e2e_range_valid_open_ended_range);
+    RUN_TEST(test_e2e_range_invalid_malformed_range);
+    RUN_TEST(test_e2e_range_invalid_out_of_bounds);
+    RUN_TEST(test_e2e_range_invalid_start_greater_than_end);
+    RUN_TEST(test_e2e_range_multiple_ranges_disabled);
     RUN_TEST(test_e2e_all_three);
     return UNITY_END();
 }

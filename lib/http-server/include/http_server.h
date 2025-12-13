@@ -1205,10 +1205,12 @@ static inline esp_err_t httpd_resp_sendstr_chunk(httpd_req_t *r, const char *str
 /* Some commonly used status codes */
 #define HTTPD_200      "200 OK"                     /*!< HTTP Response 200 */
 #define HTTPD_204      "204 No Content"             /*!< HTTP Response 204 */
+#define HTTPD_206      "206 Partial Content"             /*!< HTTP Response 206 */
 #define HTTPD_207      "207 Multi-Status"           /*!< HTTP Response 207 */
 #define HTTPD_400      "400 Bad Request"            /*!< HTTP Response 400 */
 #define HTTPD_404      "404 Not Found"              /*!< HTTP Response 404 */
 #define HTTPD_408      "408 Request Timeout"        /*!< HTTP Response 408 */
+#define HTTPD_416      "416 Range Not Satisfiable"       /*!< HTTP Response 416 */
 #define HTTPD_500      "500 Internal Server Error"  /*!< HTTP Response 500 */
 
 /**

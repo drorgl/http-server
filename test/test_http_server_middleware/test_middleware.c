@@ -7,6 +7,7 @@
 #include "test_cors.h"
 #include "test_framework.h"
 #include "test_logging.h"
+#include "test_range.h"
 
 void setUp(void) {
     // Global test setup
@@ -17,7 +18,12 @@ void tearDown(void) {
 }
 
 int test_middleware() {
-    return test_auth() + test_cors() + test_framework() + test_logging();
+    return 
+        test_auth() | 
+        test_cors() |
+        test_framework() |
+        test_logging() |
+        test_range();
 }
 
 int main(void) {
