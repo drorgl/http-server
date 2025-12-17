@@ -29,8 +29,6 @@
 #define TEST_BUFFER_SIZE 1024
 #define RECEIVE_TIMEOUT_SEC 5 // 5 seconds cumulative timeout for receive operations
 
-
-
 // A flag to be set by the custom error handler
 static bool custom_error_handler_invoked = false;
 
@@ -43,8 +41,6 @@ static esp_err_t mock_error_handler(httpd_req_t *req, httpd_err_code_t error)
     httpd_resp_send_err(req, error, "Custom Error Handler Invoked");
     return ESP_OK; // Keep the socket open
 }
-
-
 
 /**
  * Test: given_server_without_uri_handler_when_client_requests_unregistered_uri_then_404_not_found_is_returned
@@ -123,12 +119,11 @@ void given_registered_uri_handler_for_get_when_post_request_then_405_method_not_
     httpd_stop(handle);
 }
 
-
 /**
- * Test: given_server_running_when_malformed_request_is_sent_then_400_bad_request_is_returned
+ * Test: given_server_running_when_request_without_version_is_sent_then_505_version_unsupported_is_returned
  *
  * Purpose: Verify that the server's parser can gracefully handle malformed HTTP requests.
- * Expected: The server should respond with a "400 Bad Request" error.
+ * Expected: The server should respond with a "505 Version Not Supported" error for missing HTTP version.
  */
 void given_server_running_when_request_without_version_is_sent_then_505_version_unsupported_is_returned(void)
 {
@@ -157,7 +152,7 @@ void given_server_running_when_request_without_version_is_sent_then_505_version_
     httpd_os_thread_sleep(100);
     recv(sockfd, buffer, sizeof(buffer) - 1, 0);
 
-    // Then: The server should respond with a 400 Bad Request
+    // Then: The server should respond with a 505 Version Not Supported
     TEST_ASSERT_NOT_NULL(strstr(buffer, "505 Version Not Supported"));
 
     // Cleanup
@@ -251,6 +246,8 @@ void given_server_running_when_long_header_request_is_sent_then_431_req_hdr_fiel
     httpd_stop(handle);
 }
 
+// Helper function declared in http_server.h - no need for static redeclaration
+
 /**
  * Test: given_server_with_custom_error_handler_when_error_occurs_then_handler_is_invoked
  *
@@ -304,11 +301,11 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
     struct timeval start_time, current_time;
     gettimeofday(&start_time, NULL);
     long elapsed_ms;
-    
+
     // Check for a usable buffer size (must reserve 1 byte for null terminator)
     if (buffer_size < 2) {
         if (buffer_size == 1 && buffer) buffer[0] = '\0';
-        return 0; 
+        return 0;
     }
 
     LOGD(TAG, "Starting read loop on socket %d with max capacity %zu bytes and cumulative timeout %d seconds.", sockfd, buffer_size - 1, RECEIVE_TIMEOUT_SEC);
@@ -354,7 +351,7 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
             int error_code;
             #ifdef _WIN32
                 error_code = WSAGetLastError();
-                if (error_code == WSAEWOULDBLOCK) { 
+                if (error_code == WSAEWOULDBLOCK) {
                     LOGD(TAG, "Timeout/No data available (WSAEWOULDBLOCK) during recv. Continuing loop.");
                     continue; // Non-fatal, continue to check cumulative time
                 } else {
@@ -363,7 +360,7 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
                 }
             #else // Linux/POSIX
                 error_code = errno;
-                if (error_code == EAGAIN || error_code == EWOULDBLOCK) { 
+                if (error_code == EAGAIN || error_code == EWOULDBLOCK) {
                     LOGD(TAG, "Timeout/No data available (EAGAIN/EWOULDBLOCK) during recv. Continuing loop.");
                     continue; // Non-fatal, continue to check cumulative time
                 } else {
@@ -372,7 +369,7 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
                 }
             #endif
         }
-        
+
         // --- 1. Connection Gracefully Closed (EOF) ---
         if (recv_len == 0) {
             LOGD(TAG, "Connection closed by peer (EOF). Read finished.");
@@ -382,7 +379,7 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
         // --- 2. Data Received Successfully (recv_len > 0) ---
         LOGD_BUFFER_HEXDUMP(TAG, buffer + total_recv, recv_len, "Received chunk size: %d", recv_len);
         total_recv += recv_len;
-        
+
         // Check for buffer overflow before the next iteration
         if (total_recv >= buffer_size - 1) {
             LOGD(TAG, "Buffer full (%d bytes). Stopping read to prevent overflow.", total_recv);
@@ -391,7 +388,7 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
     }
 
     // Finalize: Null-terminate the received data
-    buffer[total_recv] = '\0'; 
+    buffer[total_recv] = '\0';
     LOGD(TAG, "Receive operation completed. Total bytes read: %d", total_recv);
     return total_recv;
     // If a fatal error occurred during select or recv, -1 would have been returned earlier.
@@ -417,35 +414,8 @@ int receive_all_data(int sockfd, char* buffer, size_t buffer_size) {
         #endif
     }
 
-    // --- 3. Error Occurred (recv_len == -1 / SOCKET_FATAL_ERROR) ---
-    if (recv_len == -1) {
-        
-        int error_code;
-        #ifdef _WIN32
-            error_code = WSAGetLastError();
-            // WSAEWOULDBLOCK is the non-fatal error for non-blocking sockets/timeouts
-            if (error_code == WSAEWOULDBLOCK) { 
-                LOGD(TAG, "Timeout/No data available (WSAEWOULDBLOCK). Returning currently read data.");
-                // We treat this as a non-fatal stop and return the data we got.
-            } else {
-                LOGE(TAG, "Fatal receive error: %d (Winsock). Returning -1.", error_code);
-                return -1;
-            }
-        #else // Linux/POSIX
-            error_code = errno;
-            // EAGAIN/EWOULDBLOCK is the non-fatal error for non-blocking sockets/timeouts
-            if (error_code == EAGAIN || error_code == EWOULDBLOCK) { 
-                LOGD(TAG, "Timeout/No data available (EAGAIN/EWOULDBLOCK). Returning currently read data.");
-                // Non-fatal, return data received so far.
-            } else {
-                LOGE(TAG, "Fatal receive error: %d (errno). Returning -1.", error_code);
-                return -1;
-            }
-        #endif
-    }
-
     // Finalize: Null-terminate the received data
-    buffer[total_recv] = '\0'; 
+    buffer[total_recv] = '\0';
     LOGD(TAG, "Receive operation completed. Total bytes read: %d", total_recv);
     return total_recv;
 }
@@ -559,8 +529,8 @@ void given_request_with_less_content_length_when_sent_then_server_handles_correc
 //     TEST_ASSERT_GREATER_THAN(0, recv_ret); // Ensure data was received
 //     LOGD_BUFFER_HEXDUMP(TAG, buffer, sizeof(buffer), "Received response for less data");
 
-    int bytes_read = receive_all_data(sockfd, 
-                                  buffer, 
+    int bytes_read = receive_all_data(sockfd,
+                                  buffer,
                                   sizeof(buffer));
 
     // TEST_ASSERT_GREATER_THAN(0, recv_ret); // Ensure data was received
@@ -660,6 +630,297 @@ void given_request_with_more_content_length_when_sent_then_server_handles_correc
     httpd_stop(handle);
 }
 
+/**
+ * Test: given_server_running_when_http_10_request_sent_then_request_accepted
+ *
+ * Purpose: Verify that HTTP/1.0 requests are accepted and handled correctly (RFC 9112 protocol downgrade compatibility).
+ * Expected: HTTP/1.0 requests should work normally, demonstrating backward compatibility.
+ */
+void given_server_running_when_http_10_request_sent_then_request_accepted(void)
+{
+    // Given: A running server with a GET handler
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9020; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t test_uri = {
+        .uri      = "/http10_test",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            const char *response = "HTTP/1.0 Request Processed";
+            httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &test_uri));
+
+    // When: Client sends HTTP/1.0 request (protocol downgrade scenario)
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *http10_request = "GET /http10_test HTTP/1.0\r\nHost: localhost\r\n\r\n";
+    send(sockfd, http10_request, strlen(http10_request), 0);
+    httpd_os_thread_sleep(100);
+
+    char buffer[1024] = {0};
+    recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+
+    // Then: HTTP/1.0 request should be processed successfully
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "HTTP/1.0 Request Processed"));
+
+    // Cleanup
+    #ifdef _WIN32
+        closesocket(sockfd);
+    #else
+        close(sockfd);
+    #endif
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_running_when_http_11_request_sent_then_request_accepted
+ *
+ * Purpose: Verify that HTTP/1.1 requests are accepted and handled correctly.
+ * Expected: HTTP/1.1 requests should work normally, demonstrating standard HTTP/1.1 support.
+ */
+void given_server_running_when_http_11_request_sent_then_request_accepted(void)
+{
+    // Given: A running server with a GET handler
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9021; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t test_uri = {
+        .uri      = "/http11_test",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            const char *response = "HTTP/1.1 Request Processed";
+            httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &test_uri));
+
+    // When: Client sends HTTP/1.1 request using test client
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK,
+                     http_test_client_send_request(client, HTTP_METHOD_GET,
+                                                 "/http11_test", NULL, NULL, 0, &response, TEST_TIMEOUT_MS));
+
+    // Then: HTTP/1.1 request should be processed successfully
+    TEST_ASSERT_EQUAL(200, response.status_code);
+    TEST_ASSERT_NOT_NULL(response.body);
+    TEST_ASSERT_NOT_NULL(strstr(response.body, "HTTP/1.1 Request Processed"));
+
+    // Cleanup
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_running_when_http_2_0_request_sent_then_505_version_unsupported_returned
+ *
+ * Purpose: Verify that HTTP/2.0 requests are rejected with 505 Version Not Supported.
+ * Expected: Invalid HTTP versions should return 505, not be accepted or cause crashes.
+ */
+void given_server_running_when_http_2_0_request_sent_then_505_version_unsupported_returned(void)
+{
+    // Given: A running server
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9022; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    // When: Client sends HTTP/2.0 request (unsupported version)
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *http2_request = "GET /test HTTP/2.0\r\nHost: localhost\r\n\r\n";
+    send(sockfd, http2_request, strlen(http2_request), 0);
+    httpd_os_thread_sleep(100);
+
+    char buffer[1024] = {0};
+    recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+
+    // Then: HTTP/2.0 request should be rejected with 505 Version Not Supported
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "505 Version Not Supported"));
+
+    // Cleanup
+    #ifdef _WIN32
+        closesocket(sockfd);
+    #else
+        close(sockfd);
+    #endif
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_running_when_http_0_9_request_sent_then_505_version_unsupported_returned
+ *
+ * Purpose: Verify that HTTP/0.9 requests are rejected with 505 Version Not Supported.
+ * Expected: Legacy HTTP/0.9 requests should be properly rejected.
+ */
+void given_server_running_when_http_0_9_request_sent_then_505_version_unsupported_returned(void)
+{
+    // Given: A running server
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9023; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    // When: Client sends HTTP/0.9 request (legacy unsupported version)
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *http09_request = "GET /test HTTP/0.9\r\n\r\n";
+    send(sockfd, http09_request, strlen(http09_request), 0);
+    httpd_os_thread_sleep(100);
+
+    char buffer[1024] = {0};
+    recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+
+    // Then: HTTP/0.9 request should be rejected with 505 Version Not Supported
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "505 Version Not Supported"));
+
+    // Cleanup
+    #ifdef _WIN32
+        closesocket(sockfd);
+    #else
+        close(sockfd);
+    #endif
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_running_when_invalid_major_version_request_sent_then_505_version_unsupported_returned
+ *
+ * Purpose: Verify that requests with invalid major versions (like HTTP/X.1) are rejected.
+ * Expected: Invalid major version numbers should return 505.
+ */
+void given_server_running_when_invalid_major_version_request_sent_then_505_version_unsupported_returned(void)
+{
+    // Given: A running server
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9024; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    // When: Client sends request with invalid major version
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *invalid_version_request = "GET /test HTTP/3.1\r\nHost: localhost\r\n\r\n";
+    send(sockfd, invalid_version_request, strlen(invalid_version_request), 0);
+    httpd_os_thread_sleep(100);
+
+    char buffer[1024] = {0};
+    recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+
+    // Then: Invalid major version request should be rejected with 505 Version Not Supported
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "505 Version Not Supported"));
+
+    // Cleanup
+    #ifdef _WIN32
+        closesocket(sockfd);
+    #else
+        close(sockfd);
+    #endif
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_running_when_http_1_0_with_keep_alive_then_connection_handled_correctly
+ *
+ * Purpose: Verify that HTTP/1.0 requests with Connection: keep-alive header demonstrate protocol downgrade behavior.
+ * Expected: HTTP/1.0 connections should handle keep-alive according to HTTP/1.0 semantics.
+ */
+void given_server_running_when_http_1_0_with_keep_alive_then_connection_handled_correctly(void)
+{
+    // Given: A running server with GET handler
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9025; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t test_uri = {
+        .uri      = "/keep_alive_test",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            const char *response = "Keep-Alive Test Response";
+            httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &test_uri));
+
+    // When: Client sends HTTP/1.0 request with Connection: keep-alive
+    struct sockaddr_in serv_addr;
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *http10_keep_alive_request = "GET /keep_alive_test HTTP/1.0\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n";
+    send(sockfd, http10_keep_alive_request, strlen(http10_keep_alive_request), 0);
+    httpd_os_thread_sleep(100);
+
+    char buffer[1024] = {0};
+    recv(sockfd, buffer, sizeof(buffer) - 1, 0);
+
+    // Then: HTTP/1.0 request with keep-alive should be processed (may or may not keep connection alive per server config)
+    TEST_ASSERT_NOT_NULL(strstr(buffer, "Keep-Alive Test Response"));
+
+    // Cleanup
+    #ifdef _WIN32
+        closesocket(sockfd);
+    #else
+        close(sockfd);
+    #endif
+    httpd_stop(handle);
+}
+
 int test_error_handling(void) {
     // UNITY_BEGIN();
     UnitySetTestFile(__FILE__);
@@ -671,6 +932,12 @@ int test_error_handling(void) {
     RUN_TEST(given_server_with_custom_error_handler_when_error_occurs_then_handler_is_invoked);
     RUN_TEST(given_request_with_less_content_length_when_sent_then_server_handles_correctly);
     RUN_TEST(given_request_with_more_content_length_when_sent_then_server_handles_correctly);
-    // return UNITY_END();
+    // HTTP Version Handling Tests (RFC 9112 compliance)
+    RUN_TEST(given_server_running_when_http_10_request_sent_then_request_accepted);
+    RUN_TEST(given_server_running_when_http_11_request_sent_then_request_accepted);
+    RUN_TEST(given_server_running_when_http_2_0_request_sent_then_505_version_unsupported_returned);
+    RUN_TEST(given_server_running_when_http_0_9_request_sent_then_505_version_unsupported_returned);
+    RUN_TEST(given_server_running_when_invalid_major_version_request_sent_then_505_version_unsupported_returned);
+    RUN_TEST(given_server_running_when_http_1_0_with_keep_alive_then_connection_handled_correctly);
     return 0;
 }
