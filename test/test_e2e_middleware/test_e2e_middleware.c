@@ -10,6 +10,7 @@
 #include "middleware_logging.h"
 #include "middleware_range.h"
 #include "middleware_conditional.h"
+#include "middleware_content_negotiation.h"
 #include "http_test_client.h"
 
 #ifdef _WIN32
@@ -136,6 +137,32 @@ static httpd_conditional_middleware_config_t conditional_cfg = {
     .resp_set_status = httpd_resp_set_status,
     .resp_set_hdr = httpd_resp_set_hdr,
     .resp_send = httpd_resp_send
+};
+
+// Content Negotiation middleware test configuration
+static esp_err_t mock_set_content_type(httpd_req_t *req, const char *content_type) {
+    // For now, just return OK (Phase 1 - no actual negotiation)
+    return ESP_OK;
+}
+
+static esp_err_t mock_add_vary_header(httpd_req_t *req, const char *vary_value) {
+    // For now, just return OK (Phase 1 - no actual negotiation)
+    return ESP_OK;
+}
+
+static httpd_content_negotiation_config_t content_negotiation_cfg = {
+    .capabilities = {
+        .media_types = (char*[]){"application/json", "text/html", "text/plain", NULL},
+        .encodings = (char*[]){"gzip", "deflate", "identity", NULL},
+        .languages = (char*[]){"en", "es", "fr", NULL},
+        .charsets = (char*[]){"utf-8", "iso-8859-1", NULL}
+    },
+    .get_capabilities = NULL, // Static capabilities for test
+    .context = NULL,
+    .free_ctx = NULL,
+    .set_content_type = mock_set_content_type,
+    .add_vary_header = mock_add_vary_header,
+    .req_get_hdr_value_str = httpd_req_get_hdr_value_str
 };
 
 static esp_err_t start_test_server(const httpd_middleware_config_t *configs, size_t num_configs, uint16_t *port_out, httpd_handle_t *handle_out, httpd_uri_t **wrapped_out, uint16_t ctrl_port) {
@@ -1017,6 +1044,141 @@ void test_e2e_conditional_if_unmodified_since(void) {
     httpd_os_thread_sleep(100);
 }
 
+// Content Negotiation middleware e2e tests
+void test_e2e_content_negotiation_basic_integration(void) {
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_content_negotiation,
+            .context = &content_negotiation_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32788));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // Normal request without Accept headers should pass through
+    http_test_response_t resp = {0};
+    http_test_client_err_t err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", NULL, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp.status_code);
+    TEST_ASSERT_EQUAL_MEMORY("OK", resp.body, resp.body_len);
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_content_negotiation_accept_header_parsing(void) {
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_content_negotiation,
+            .context = &content_negotiation_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32789));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // Request with various Accept headers - middleware should parse without error
+    const char *accept_hdr = "Accept: text/html, application/json;q=0.8\r\n";
+    http_test_response_t resp = {0};
+    http_test_client_err_t err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", accept_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp.status_code); // Should still pass through in Phase 1
+    TEST_ASSERT_EQUAL_MEMORY("OK", resp.body, resp.body_len);
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+
+    // Test with malformed Accept header
+    client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    const char *malformed_accept_hdr = "Accept: invalid;header;\r\n";
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", malformed_accept_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp.status_code); // Should handle gracefully
+    TEST_ASSERT_EQUAL_MEMORY("OK", resp.body, resp.body_len);
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_content_negotiation_malformed_headers(void) {
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_content_negotiation,
+            .context = &content_negotiation_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32790));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // Test with various malformed Accept headers that should not crash the middleware
+    const char *test_headers[] = {
+        "Accept: ;\r\n",                    // Empty ranges
+        "Accept: ,,\r\n",                  // Empty ranges with commas
+        "Accept: type;q=abc\r\n",          // Invalid quality value
+        "Accept: type;q=1.5\r\n",          // Quality value > 1.0
+        "Accept: type;q=-0.1\r\n",         // Negative quality value
+        "Accept: \t \n\r\n",               // Whitespace only
+        NULL
+    };
+
+    for (int i = 0; test_headers[i] != NULL; i++) {
+        http_test_response_t resp = {0};
+        http_test_client_err_t err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", test_headers[i], NULL, 0, &resp, 5000);
+        TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code == 200, "Malformed header should not crash server");
+
+        http_test_client_free_response(&resp);
+
+        // Brief pause between requests
+        httpd_os_thread_sleep(10);
+    }
+
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
 void test_e2e_all_three(void) {
     http_test_client_err_t err;
     httpd_handle_t handle;
@@ -1093,6 +1255,9 @@ int test_e2e_middleware(void) {
     RUN_TEST(test_e2e_conditional_if_none_match_post);
     RUN_TEST(test_e2e_conditional_if_modified_since);
     RUN_TEST(test_e2e_conditional_if_unmodified_since);
+    RUN_TEST(test_e2e_content_negotiation_basic_integration);
+    RUN_TEST(test_e2e_content_negotiation_accept_header_parsing);
+    RUN_TEST(test_e2e_content_negotiation_malformed_headers);
     RUN_TEST(test_e2e_all_three);
     return UNITY_END();
 }
