@@ -9,6 +9,7 @@
 #include "middleware_cors.h"
 #include "middleware_logging.h"
 #include "middleware_range.h"
+#include "middleware_conditional.h"
 #include "http_test_client.h"
 
 #ifdef _WIN32
@@ -109,6 +110,32 @@ static logging_config_t log_cfg = {
     .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
     .method_str = http_method_str, // Use the http_method_str from http_parser.h
     .printf = (int (*)(const char *, ...))printf
+};
+
+// Test data for conditional middleware
+static const char test_conditional_content[] = "Test content for conditional requests";
+static const long long test_conditional_timestamp = 1609459200; // 2021-01-01 00:00:00 GMT
+
+static esp_err_t test_etag_generator(httpd_req_t *req, char *etag, size_t etag_len) {
+    // Generate ETag based on test content
+    return httpd_generate_strong_etag(test_conditional_content, strlen(test_conditional_content), etag, etag_len);
+}
+
+static esp_err_t test_last_modified_fn(httpd_req_t *req, long long *last_modified) {
+    *last_modified = test_conditional_timestamp;
+    return ESP_OK;
+}
+
+static httpd_conditional_middleware_config_t conditional_cfg = {
+    .etag_generator = test_etag_generator,
+    .last_modified_fn = test_last_modified_fn,
+    .context = NULL,
+    .free_ctx = NULL,
+    .req_get_hdr_value_str = httpd_req_get_hdr_value_str,
+    .req_get_hdr_value_len = httpd_req_get_hdr_value_len,
+    .resp_set_status = httpd_resp_set_status,
+    .resp_set_hdr = httpd_resp_set_hdr,
+    .resp_send = httpd_resp_send
 };
 
 static esp_err_t start_test_server(const httpd_middleware_config_t *configs, size_t num_configs, uint16_t *port_out, httpd_handle_t *handle_out, httpd_uri_t **wrapped_out, uint16_t ctrl_port) {
@@ -654,6 +681,342 @@ void test_e2e_range_multiple_ranges_disabled(void) {
     httpd_os_thread_sleep(100); // Allow time for socket closure
 }
 
+// Conditional middleware e2e tests
+void test_e2e_conditional_normal_request(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32781));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", NULL, NULL, 0, &resp, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp.status_code);
+    TEST_ASSERT_EQUAL_MEMORY("OK", resp.body, resp.body_len);
+
+    // Check ETag and Last-Modified headers are set
+    const char *etag = http_test_client_get_header(&resp, "ETag");
+    TEST_ASSERT_NOT_NULL(etag);
+    TEST_ASSERT_TRUE(strstr(etag, "\"") != NULL); // Should be quoted
+    free((void*)etag);
+
+    const char *last_modified = http_test_client_get_header(&resp, "Last-Modified");
+    TEST_ASSERT_NOT_NULL(last_modified);
+    free((void*)last_modified);
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_conditional_if_match_matching(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32782));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // First request to get the ETag
+    http_test_response_t resp1 = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", NULL, NULL, 0, &resp1, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp1.status_code);
+
+    const char *etag = http_test_client_get_header(&resp1, "ETag");
+    TEST_ASSERT_NOT_NULL(etag);
+
+    // Second request with If-Match header using the ETag
+    http_test_client_free_response(&resp1);
+
+    char if_match_hdr[256];
+    snprintf(if_match_hdr, sizeof(if_match_hdr), "If-Match: %s\r\n", etag);
+    free((void*)etag);
+    // Disconnect and reconnect
+    http_test_client_disconnect(client);
+    client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    http_test_response_t resp2 = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", if_match_hdr, NULL, 0, &resp2, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp2.status_code); // Should continue normally
+    TEST_ASSERT_EQUAL_MEMORY("OK", resp2.body, resp2.body_len);
+
+    http_test_client_free_response(&resp2);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_conditional_if_match_non_matching(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32783));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // Request with non-matching If-Match header
+    const char *if_match_hdr = "If-Match: \"non-matching-etag\"\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", if_match_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for non-matching If-Match");
+    TEST_ASSERT_EQUAL(412, resp.status_code);
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_conditional_if_none_match_get(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32784));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // First request to get the ETag
+    http_test_response_t resp1 = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", NULL, NULL, 0, &resp1, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp1.status_code);
+
+    const char *etag = http_test_client_get_header(&resp1, "ETag");
+    TEST_ASSERT_NOT_NULL(etag);
+    http_test_client_free_response(&resp1);
+
+    // Second request with If-None-Match header using the ETag
+    http_test_client_disconnect(client);
+    client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    char if_none_match_hdr[256];
+    snprintf(if_none_match_hdr, sizeof(if_none_match_hdr), "If-None-Match: %s\r\n", etag);
+    free((void*)etag);
+
+    http_test_response_t resp2 = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", if_none_match_hdr, NULL, 0, &resp2, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp2.status_code != 0, "No response for If-None-Match GET");
+    TEST_ASSERT_EQUAL(304, resp2.status_code); // GET with matching ETag returns 304 Not Modified
+
+    // Check ETag and Last-Modified headers are present in 304 response
+    const char *etag_304 = http_test_client_get_header(&resp2, "ETag");
+    TEST_ASSERT_NOT_NULL(etag_304);
+    free((void*)etag_304);
+
+    const char *last_modified_304 = http_test_client_get_header(&resp2, "Last-Modified");
+    TEST_ASSERT_NOT_NULL(last_modified_304);
+    free((void*)last_modified_304);
+
+    http_test_client_free_response(&resp2);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_conditional_if_none_match_post(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32785));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // First request to get the ETag
+    http_test_response_t resp1 = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", NULL, NULL, 0, &resp1, 5000);
+    TEST_ASSERT(err == HTTP_TEST_CLIENT_OK);
+    TEST_ASSERT_EQUAL(200, resp1.status_code);
+
+    const char *etag = http_test_client_get_header(&resp1, "ETag");
+    TEST_ASSERT_NOT_NULL(etag);
+    http_test_client_free_response(&resp1);
+
+    // POST request with If-None-Match header using the ETag
+    http_test_client_disconnect(client);
+    client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    char if_none_match_hdr[256];
+    snprintf(if_none_match_hdr, sizeof(if_none_match_hdr), "If-None-Match: %s\r\n", etag);
+    free((void*)etag);
+
+    http_test_response_t resp2 = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_POST, "/test", if_none_match_hdr, NULL, 0, &resp2, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp2.status_code != 0, "No response for If-None-Match POST");
+    TEST_ASSERT_EQUAL(405, resp2.status_code); // POST method not allowed on this URI - method validation happens before conditional evaluation
+
+    http_test_client_free_response(&resp2);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_conditional_if_modified_since(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32786));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // Request with If-Modified-Since that matches the last modified time
+    const char *if_modified_since_hdr = "If-Modified-Since: Fri, 01 Jan 2021 00:00:00 GMT\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", if_modified_since_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for If-Modified-Since");
+    TEST_ASSERT_EQUAL(304, resp.status_code); // Should return 304 Not Modified
+
+    // Check headers are present
+    const char *etag = http_test_client_get_header(&resp, "ETag");
+    TEST_ASSERT_NOT_NULL(etag);
+    free((void*)etag);
+
+    const char *last_modified = http_test_client_get_header(&resp, "Last-Modified");
+    TEST_ASSERT_NOT_NULL(last_modified);
+    free((void*)last_modified);
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
+void test_e2e_conditional_if_unmodified_since(void) {
+    http_test_client_err_t err;
+    httpd_handle_t handle;
+    uint16_t port;
+    httpd_uri_t *wrapped = NULL;
+    httpd_middleware_config_t configs[] = {
+        {
+            .func = middleware_conditional,
+            .context = &conditional_cfg,
+            .enabled = true,
+            .uri_match_wildcard = httpd_uri_match_wildcard,
+            .uri_pattern = "/test",
+            .method_filter = HTTP_ANY
+        }
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, start_test_server(configs, 1, &port, &handle, &wrapped, 32787));
+
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_NOT_NULL(wrapped);
+
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, 5000));
+
+    // Request with If-Unmodified-Since that is earlier than last modified time
+    const char *if_unmodified_since_hdr = "If-Unmodified-Since: Thu, 31 Dec 2020 23:59:59 GMT\r\n";
+    http_test_response_t resp = {0};
+    err = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", if_unmodified_since_hdr, NULL, 0, &resp, 5000);
+    TEST_ASSERT_MESSAGE(err == HTTP_TEST_CLIENT_OK || resp.status_code != 0, "No response for If-Unmodified-Since");
+    TEST_ASSERT_EQUAL(412, resp.status_code); // Should return 412 Precondition Failed
+
+    http_test_client_free_response(&resp);
+    http_test_client_disconnect(client);
+    stop_test_server(handle, wrapped);
+    httpd_os_thread_sleep(100);
+}
+
 void test_e2e_all_three(void) {
     http_test_client_err_t err;
     httpd_handle_t handle;
@@ -723,6 +1086,13 @@ int test_e2e_middleware(void) {
     RUN_TEST(test_e2e_range_invalid_out_of_bounds);
     RUN_TEST(test_e2e_range_invalid_start_greater_than_end);
     RUN_TEST(test_e2e_range_multiple_ranges_disabled);
+    RUN_TEST(test_e2e_conditional_normal_request);
+    RUN_TEST(test_e2e_conditional_if_match_matching);
+    RUN_TEST(test_e2e_conditional_if_match_non_matching);
+    RUN_TEST(test_e2e_conditional_if_none_match_get);
+    RUN_TEST(test_e2e_conditional_if_none_match_post);
+    RUN_TEST(test_e2e_conditional_if_modified_since);
+    RUN_TEST(test_e2e_conditional_if_unmodified_since);
     RUN_TEST(test_e2e_all_three);
     return UNITY_END();
 }

@@ -235,7 +235,7 @@ The tests are organized by functionality area to:
 
 **Implementation Details**: Extends test client infrastructure to support PUT/DELETE/HEAD methods, addresses critical testing gap identified in standards.md for RFC 1945 compliance.
 
-### 17. Authentication Tests (`test_authentication.cpp`)
+### 16. Authentication Tests (`test_authentication.cpp`)
 
 **Purpose**: Tests for HTTP Authentication headers, response codes, and proper Basic authentication implementation as per RFC 9110 and RFC 7617.
 
@@ -414,6 +414,94 @@ The tests use the Unity test framework and are designed to work with PlatformIO'
 - `given_server_with_custom_uri_match_fn_when_request_matches_then_handler_invoked` - Tests custom URI matching
 - `given_server_with_uri_handler_when_client_connects_then_handler_is_invoked` - Tests end-to-end flow
 - `dummy` - Placeholder test.
+
+### 9. Async Requests Tests (`test_async_requests.cpp`)
+**Test Functions:**
+- `given_server_with_async_handler_when_client_requests_then_receives_response` - Tests async request processing
+
+### 10. Async WebSocket Tests (`test_async_websocket.cpp`)
+**Test Functions:**
+- `given_ws_connection_when_sending_sync_from_another_task_then_succeeds` - Tests synchronous WebSocket sending from another task
+- `given_ws_connection_when_sending_async_from_another_task_then_succeeds` - Tests asynchronous WebSocket sending from another task
+- `given_closed_ws_connection_when_sending_sync_then_fails` - Tests failed synchronous sending on closed connection
+- `given_closed_ws_connection_when_sending_async_then_callback_receives_error` - Tests error callback for async sending on closed connection
+
+### 11. Async Work Queue Tests (`test_async_work_queue.cpp`)
+**Test Functions:**
+- `given_server_with_async_work_queue_handler_when_client_gets_then_receives_two_responses` - Tests async work queue functionality
+
+### 12. Empty Header Tests (`test_empty_header.cpp`)
+**Test Functions:**
+- `given_server_with_empty_header_handler_when_client_sends_request_with_empty_header_then_it_is_handled_correctly` - Tests correct parsing of empty headers
+
+### 13. Leftover Data Tests (`test_leftover_data.cpp`)
+**Test Functions:**
+- `given_server_with_leftover_data_handler_when_client_posts_then_server_handles_it_gracefully` - Tests server robustness when handling requests with unread body data
+
+### 14. Session Context Tests (`test_session_context.cpp`)
+**Test Functions:**
+- `given_server_with_session_handler_when_client_posts_then_context_is_maintained` - Tests session context creation, persistence, and cleanup
+
+### 15. HTTP Methods Tests (`test_http_methods.cpp`)
+**Test Functions:**
+- `given_server_with_put_handler_when_client_sends_put_request_then_server_handles_correctly` - Tests PUT request with body data
+- `given_server_with_delete_handler_when_client_sends_delete_request_then_server_handles_correctly` - Tests DELETE request without body
+- `given_server_with_head_handler_when_client_sends_head_request_then_server_returns_headers_only` - Tests HEAD request headers-only response
+- `given_server_with_get_only_handler_when_client_sends_put_delete_head_then_405_method_not_allowed` - Tests method validation for unsupported methods
+
+### 16. Authentication Tests (`test_authentication.cpp`)
+**Test Functions:**
+- `given_protected_resource_when_no_auth_header_then_401_unauthorized_returned` - Tests WWW-Authenticate header and 401 response for missing auth
+- `given_basic_auth_credentials_when_valid_then_access_granted` - Tests valid Basic auth with proper base64 decoding and credential validation
+- `given_basic_auth_credentials_when_invalid_then_access_denied` - Tests invalid Basic auth credentials with proper base64 decoding
+- `given_authentication_info_when_successful_then_header_included` - Tests Authentication-Info header inclusion
+- `given_multiple_auth_schemes_when_offered_then_client_can_choose` - Tests multiple authentication schemes in WWW-Authenticate
+- `given_malformed_auth_header_when_provided_then_400_bad_request` - Tests malformed Authorization headers
+- `given_invalid_base64_auth_when_provided_then_access_denied` - Tests Authorization headers with invalid base64 encoding
+- `given_wrong_scheme_auth_when_provided_then_access_denied` - Tests unsupported authentication schemes
+
+### 17. Security Tests (`test_security.cpp`)
+**Test Functions:**
+- `test_response_splitting_prevention_in_custom_headers` - Tests that CRLF in header values don't create response splitting attacks
+- `test_response_splitting_prevention_in_custom_status` - Tests that custom status lines can't inject HTTP headers
+- `test_crlf_injection_protection_in_header_values` - Tests that Location and other headers can't be injected via CRLF
+- `test_header_injection_attack_prevention_in_error_messages` - Tests that custom error messages can't inject headers
+- `test_header_field_name_injection_prevention` - Tests that header field names can't contain injection characters
+- `test_request_smuggling_content_length_mismatch` - Tests Content-Length validation to prevent request smuggling
+
+### 18. Conditional Requests Tests (`test_conditional.c`)
+**Purpose**: Tests for HTTP conditional requests (RFC 9110 Part 13) including ETag generation, If-Match, If-None-Match, If-Modified-Since, and If-Unmodified-Since headers.
+
+**Test Functions:**
+- `test_generate_strong_etag_success` - Tests successful strong ETag generation from content
+- `test_generate_strong_etag_invalid_args` - Tests ETag generation with invalid arguments
+- `test_generate_weak_etag_success` - Tests successful weak ETag generation from timestamp
+- `test_generate_weak_etag_invalid_args` - Tests weak ETag generation with invalid arguments
+- `test_parse_etag_list_single_etag` - Tests parsing of single ETag in header
+- `test_parse_etag_list_multiple_etags` - Tests parsing of multiple ETags in header
+- `test_parse_etag_list_star` - Tests parsing of wildcard ETag
+- `test_etag_matches_success` - Tests successful ETag matching
+- `test_etag_matches_failure` - Tests failed ETag matching
+- `test_etag_matches_star` - Tests wildcard ETag matching
+- `test_middleware_no_conditional_headers` - Tests middleware with no conditional headers
+- `test_middleware_if_match_matching_etag` - Tests If-Match with matching ETag
+- `test_middleware_if_match_non_matching_etag` - Tests If-Match with non-matching ETag
+- `test_middleware_if_none_match_matching_etag_get` - Tests If-None-Match with matching ETag for GET
+- `test_middleware_if_none_match_matching_etag_post` - Tests If-None-Match with matching ETag for POST
+- `test_middleware_if_modified_since_matching` - Tests If-Modified-Since with matching timestamp
+- `test_middleware_if_unmodified_since_non_matching` - Tests If-Unmodified-Since with non-matching timestamp
+- `test_parse_http_date_success` - Tests successful HTTP date parsing
+- `test_parse_http_date_invalid_args` - Tests HTTP date parsing with invalid arguments
+- `test_format_http_date_success` - Tests successful HTTP date formatting
+- `test_format_http_date_invalid_args` - Tests HTTP date formatting with invalid arguments
+
+**RFC 9110 Coverage**:
+- **ETag header field** (Section 8.8.3) - Strong/weak validators
+- **If-Match, If-None-Match** (Section 13.1.1, 13.1.2) - Entity tag preconditions
+- **If-Modified-Since, If-Unmodified-Since** (Section 13.1.3, 13.1.4) - Date-based preconditions
+- **Conditional request evaluation precedence** (Section 13.2.2) - Request processing order
+
+**What They Test**: Complete HTTP conditional request implementation with proper ETag generation, header parsing, and RFC 9110 compliance. Tests cover all conditional request scenarios including 304 Not Modified and 412 Precondition Failed responses.
 
 
 ## TODO Section - Missing Edge Cases and Improvements

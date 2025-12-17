@@ -8,6 +8,7 @@
 #include "test_framework.h"
 #include "test_logging.h"
 #include "test_range.h"
+#include "test_conditional.h"
 
 void setUp(void) {
     // Global test setup
@@ -23,7 +24,8 @@ int test_middleware() {
         test_cors() |
         test_framework() |
         test_logging() |
-        test_range();
+        test_range() | 
+        test_conditional();
 }
 
 int main(void) {

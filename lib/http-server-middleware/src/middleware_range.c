@@ -477,6 +477,14 @@ esp_err_t middleware_range(httpd_req_t *req, const httpd_uri_t *uri, void *ctx) 
 
     httpd_range_middleware_config_t *config = (httpd_range_middleware_config_t*)ctx;
 
+    // Check if If-Range precondition failed (set by conditional middleware)
+    // This is a temporary implementation - should be improved with proper inter-middleware communication
+    if (req->user_ctx == (void*)0x1) {
+        // Reset user_ctx to avoid affecting other code
+        req->user_ctx = NULL;
+        return ESP_OK; // Continue to normal handler, ignore Range header
+    }
+
     // Check for Range header - use callback if provided, otherwise fallback to direct call
     bool has_range_header = config->req_has_range_header ?
         config->req_has_range_header(req) : httpd_req_has_range_header(req);
