@@ -104,6 +104,13 @@ httpd_accept_range_t* httpd_parse_accept_header(const char *header_value);
 void httpd_free_accept_ranges(httpd_accept_range_t *ranges);
 
 /**
+ * @brief Free content negotiation result structure
+ *
+ * Frees all dynamically allocated strings within the result structure.
+ */
+void httpd_free_negotiation_result(httpd_content_negotiation_result_t *result);
+
+/**
  * @brief Perform content negotiation
  *
  * @param accept_ranges Parsed Accept header ranges
@@ -131,6 +138,46 @@ esp_err_t httpd_negotiate_media_type(const char *accept_header,
 esp_err_t middleware_content_negotiation(httpd_req_t *req,
                                        const httpd_uri_t *uri,
                                        void *ctx);
+
+/**
+ * @brief Get negotiated content type from request context
+ *
+ * @param req HTTP request structure
+ * @return Selected content type or NULL if not negotiated/no context
+ */
+const char* middleware_get_negotiated_content_type(httpd_req_t *req);
+
+/**
+ * @brief Get negotiated encoding from request context
+ *
+ * @param req HTTP request structure
+ * @return Selected encoding or NULL if not negotiated/no context
+ */
+const char* middleware_get_negotiated_encoding(httpd_req_t *req);
+
+/**
+ * @brief Get negotiated language from request context
+ *
+ * @param req HTTP request structure
+ * @return Selected language or NULL if not negotiated/no context
+ */
+const char* middleware_get_negotiated_language(httpd_req_t *req);
+
+/**
+ * @brief Get negotiated charset from request context
+ *
+ * @param req HTTP request structure
+ * @return Selected charset or NULL if not negotiated/no context
+ */
+const char* middleware_get_negotiated_charset(httpd_req_t *req);
+
+/**
+ * @brief Check if content was negotiated for this request
+ *
+ * @param req HTTP request structure
+ * @return true if negotiation occurred, false otherwise
+ */
+bool middleware_content_was_negotiated(httpd_req_t *req);
 
 #ifdef __cplusplus
 }

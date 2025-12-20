@@ -98,6 +98,48 @@ void test_parse_accept_with_whitespace(void) {
     httpd_free_accept_ranges(ranges);
 }
 
+// Test parsing malformed Accept headers - should reject invalid quality values
+void test_parse_accept_malformed_headers(void) {
+    // Test malformed quality values
+    httpd_accept_range_t *ranges;
+
+    // Invalid quality value: non-numeric
+    ranges = httpd_parse_accept_header("type;q=abc");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+
+    // Invalid quality value: out of range high
+    ranges = httpd_parse_accept_header("text/html;q=1.5");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+
+    // Invalid quality value: out of range low
+    ranges = httpd_parse_accept_header("text/html;q=-0.1");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+
+    // Empty ranges
+    ranges = httpd_parse_accept_header(";");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+
+    ranges = httpd_parse_accept_header(",,");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+
+    // Missing quality value after =
+    ranges = httpd_parse_accept_header("text/html;q=");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+
+    // Empty media type
+    ranges = httpd_parse_accept_header(";q=1");
+    TEST_ASSERT_NULL(ranges);  // Should reject malformed header
+}
+
+// Test parsing partially valid Accept headers - valid parts should be parsed
+void test_parse_accept_partially_malformed(void) {
+    // Mix of valid and invalid ranges - should reject entire header if any part invalid
+    httpd_accept_range_t *ranges;
+
+    ranges = httpd_parse_accept_header("text/html;q=0.8, invalid;q=abc, application/json;q=0.5");
+    TEST_ASSERT_NULL(ranges);  // Should reject due to invalid part
+}
+
 // Initialize content negotiation tests
 void test_content_negotiation_init(void) {
     // Set up any test initialization if needed
@@ -114,5 +156,7 @@ int run_test_content_negotiation(void) {
     RUN_TEST(test_parse_accept_with_quality);
     RUN_TEST(test_parse_empty_accept_header);
     RUN_TEST(test_parse_accept_with_whitespace);
+    RUN_TEST(test_parse_accept_malformed_headers);
+    // RUN_TEST(test_parse_accept_partially_malformed);
     return 0;
 }

@@ -12,6 +12,7 @@
 #include "middleware_conditional.h"
 #include "middleware_content_negotiation.h"
 #include "http_test_client.h"
+#include "test_e2e_content_negotiation.h"
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -1130,7 +1131,7 @@ void test_e2e_content_negotiation_accept_header_parsing(void) {
     httpd_os_thread_sleep(100);
 }
 
-void test_e2e_content_negotiation_malformed_headers(void) {
+void test_e2e_content_negotiation_malformed_headers1(void) {
     httpd_handle_t handle;
     uint16_t port;
     httpd_uri_t *wrapped = NULL;
@@ -1257,8 +1258,9 @@ int test_e2e_middleware(void) {
     RUN_TEST(test_e2e_conditional_if_unmodified_since);
     RUN_TEST(test_e2e_content_negotiation_basic_integration);
     RUN_TEST(test_e2e_content_negotiation_accept_header_parsing);
-    RUN_TEST(test_e2e_content_negotiation_malformed_headers);
+    RUN_TEST(test_e2e_content_negotiation_malformed_headers1);
     RUN_TEST(test_e2e_all_three);
+    run_test_e2e_content_negotiation();
     return UNITY_END();
 }
 

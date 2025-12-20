@@ -81,7 +81,11 @@ static int recv_data(int sockfd, char *buf, size_t buf_len, uint32_t timeout_ms)
     int ret = recv(sockfd, buf, buf_len, 0);
     if (ret == -1) {
 #ifdef _WIN32
-        if (WSAGetLastError() == WSAEWOULDBLOCK) {
+        int error = WSAGetLastError();
+        // if (error != WSAEWOULDBLOCK){
+        //     LOGE(TAG, "Error Reading Socket %d: %d", sockfd, error);
+        // }
+        if (error == WSAEWOULDBLOCK || error == WSAETIMEDOUT) {
 #else
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
 #endif
@@ -260,6 +264,7 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
                                                      const char *body, size_t body_len,
                                                      http_test_response_t *response,
                                                      uint32_t timeout_ms) {
+    LOGD(TAG, "sending request %d %s",method, uri );
     if (client_handle == NULL || uri == NULL || response == NULL) {
         return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
     }

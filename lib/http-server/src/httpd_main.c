@@ -271,12 +271,14 @@ static void httpd_process_ctrl_msg(struct httpd_data *hd)
         return;
     }
     if (ret != sizeof(msg)) {
-        LOGW(TAG, LOG_FMT("incomplete msg"));
+        LOGW(TAG, LOG_FMT("incomplete msg, expected %d bytes but received %d"), sizeof(msg), ret);
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
         xSemaphoreGive(hd->ctrl_sock_semaphore);
 #endif
         return;
     }
+
+    LOGD(TAG, LOG_FMT("processing control message type %d"), msg.hc_msg);
 
     switch (msg.hc_msg) {
     case HTTPD_CTRL_WORK:
@@ -290,6 +292,7 @@ static void httpd_process_ctrl_msg(struct httpd_data *hd)
         hd->hd_td.status = THREAD_STOPPING;
         break;
     default:
+        LOGW(TAG, LOG_FMT("unknown control message type %d"), msg.hc_msg);
         break;
     }
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
@@ -363,7 +366,7 @@ static esp_err_t httpd_server(struct httpd_data *hd)
 
     /* Case0: Do we have a control message? */
     if (FD_ISSET(hd->ctrl_fd, &read_set)) {
-        LOGD(TAG, LOG_FMT("processing ctrl message"));
+        LOGD(TAG, "processing ctrl message on %d", hd->ctrl_fd);
         httpd_process_ctrl_msg(hd);
         if (hd->hd_td.status == THREAD_STOPPING) {
             LOGD(TAG, LOG_FMT("stopping thread"));
@@ -373,6 +376,8 @@ static esp_err_t httpd_server(struct httpd_data *hd)
             hd->ctrl_fd = -1;
             return ESP_FAIL;
         }
+    } else {
+        LOGD(TAG, LOG_FMT("control socket fd=%d not ready for reading"), hd->ctrl_fd);
     }
 
     /* Case1: Do we have any activity on the current data
@@ -512,6 +517,8 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
         close(ctrl_fd);
         return ESP_FAIL;
     }
+
+    LOGD(TAG, LOG_FMT("control socket setup: ctrl_fd=%d (receiving), msg_fd=%d (sending), both on port %d"), ctrl_fd, msg_fd, hd->config.ctrl_port);
 
     hd->listen_fd = fd;
     hd->ctrl_fd = ctrl_fd;
@@ -653,16 +660,20 @@ esp_err_t httpd_stop(httpd_handle_t handle)
     memset(&msg, 0, sizeof(msg));
     msg.hc_msg = HTTPD_CTRL_SHUTDOWN;
     int ret = 0;
-    if ((ret = cs_send_to_ctrl_sock(hd->msg_fd, hd->config.ctrl_port, &msg, sizeof(msg))) < 0) {
-        LOGE(TAG, "Failed to send shutdown signal err=%d", ret);
-        return ESP_FAIL;
-    }
-
+    
     LOGD(TAG, LOG_FMT("sent control msg to stop server"));
     while (hd->hd_td.status != THREAD_STOPPED) {
+        LOGD(TAG, "status %d", hd->hd_td.status);
+
+        LOGD(TAG, LOG_FMT("sending shutdown message from msg_fd=%d to ctrl_port=%d, receiving on ctrl_fd=%d"), hd->msg_fd, hd->config.ctrl_port, hd->ctrl_fd);
+        if ((ret = cs_send_to_ctrl_sock(hd->msg_fd, hd->config.ctrl_port, &msg, sizeof(msg))) < 0) {
+            LOGE(TAG, "Failed to send shutdown signal err=%d", ret);
+            return ESP_FAIL;
+        }
+
         httpd_os_thread_sleep(100);
     }
-    httpd_os_thread_sleep(100);
+    // httpd_os_thread_sleep(100);
 
 
     /* Release global user context, if not NULL */

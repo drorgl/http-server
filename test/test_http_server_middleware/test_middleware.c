@@ -10,6 +10,8 @@
 #include "test_range.h"
 #include "test_conditional.h"
 #include "test_content_negotiation.h"
+#include "test_content_negotiation_algorithm.h"
+#include "test_content_negotiation_integration.h"
 
 void setUp(void) {
     // Global test setup
@@ -27,7 +29,9 @@ int test_middleware() {
         test_logging() |
         test_range() | 
         test_conditional() |
-        run_test_content_negotiation();
+        run_test_content_negotiation()|
+        run_test_content_negotiation_algorithm() | 
+        run_test_content_negotiation_integration();
 }
 
 int main(void) {
