@@ -157,6 +157,6 @@ int run_test_content_negotiation(void) {
     RUN_TEST(test_parse_empty_accept_header);
     RUN_TEST(test_parse_accept_with_whitespace);
     RUN_TEST(test_parse_accept_malformed_headers);
-    // RUN_TEST(test_parse_accept_partially_malformed);
+    RUN_TEST(test_parse_accept_partially_malformed);
     return 0;
 }

@@ -18,23 +18,50 @@ extern "C" {
  */
 static bool parse_quality_value(const char *q_str, httpd_quality_value_t *quality) {
     if (!q_str || !quality) {
+        LOGD("content_negotiation", "parse_quality_value: NULL input - q_str=%p, quality=%p", q_str, quality);
         return false;
     }
 
     // Skip "q=" prefix
     if (q_str[0] != 'q' || q_str[1] != '=') {
+        LOGD("content_negotiation", "parse_quality_value: invalid prefix '%.2s'", q_str);
         return false;
     }
 
     const char *value_str = q_str + 2;
-    float value = strtof(value_str, NULL);
+    
+    // Check if value_str is empty
+    if (*value_str == '\0') {
+        LOGD("content_negotiation", "parse_quality_value: empty value after q=");
+        return false;
+    }
 
+    // Use strtof with endptr to detect parsing errors
+    char *endptr;
+    float value = strtof(value_str, &endptr);
+
+    // Check if any characters were consumed (parsing succeeded)
+    if (endptr == value_str) {
+        LOGD("content_negotiation", "parse_quality_value: no valid number found in '%s'", value_str);
+        return false;
+    }
+
+    // Check if there are any remaining non-whitespace characters
+    while (*endptr && isspace(*endptr)) endptr++;
+    if (*endptr != '\0') {
+        LOGD("content_negotiation", "parse_quality_value: trailing characters after number in '%s'", value_str);
+        return false;
+    }
+
+    // Check range
     if (value < 0.0f || value > 1.0f) {
+        LOGD("content_negotiation", "parse_quality_value: value %f out of range [0.0, 1.0]", value);
         return false;
     }
 
     quality->value = value;
     quality->explicit = true;
+    LOGD("content_negotiation", "parse_quality_value: successfully parsed %f", value);
     return true;
 }
 
@@ -47,22 +74,32 @@ static bool parse_quality_value(const char *q_str, httpd_quality_value_t *qualit
  */
 static bool parse_accept_range(const char *range_str, httpd_accept_range_t *range) {
     if (!range_str || !range) {
+        LOGD("content_negotiation", "parse_accept_range: NULL input - range_str=%p, range=%p", range_str, range);
         return false;
     }
+
+    LOGD("content_negotiation", "parse_accept_range: parsing '%s'", range_str);
 
     // Find quality parameter if present
     const char *q_pos = strstr(range_str, ";q=");
     size_t range_len;
+    bool quality_parsed_successfully = false;
 
     if (q_pos) {
         range_len = q_pos - range_str;
-        if (!parse_quality_value(q_pos + 1, &range->quality)) {
-            return false;
+        if (parse_quality_value(q_pos + 1, &range->quality)) {
+            quality_parsed_successfully = true;
+            LOGD("content_negotiation", "parse_accept_range: quality parsed successfully: %f", range->quality.value);
+        } else {
+            LOGD("content_negotiation", "parse_accept_range: quality parsing failed for '%s'", q_pos + 1);
+            return false;  // Quality parsing failed - return false immediately
         }
     } else {
         range_len = strlen(range_str);
         range->quality.value = 1.0;
         range->quality.explicit = false;
+        quality_parsed_successfully = true;
+        LOGD("content_negotiation", "parse_accept_range: no quality parameter, using default 1.0");
     }
 
     // Trim whitespace
@@ -73,21 +110,37 @@ static bool parse_accept_range(const char *range_str, httpd_accept_range_t *rang
     while (end >= start && isspace(*end)) end--;
 
     if (start > end) {
+        LOGD("content_negotiation", "parse_accept_range: empty range after trimming");
         return false;
     }
 
     size_t trimmed_len = end - start + 1;
+
+    // Check if the trimmed range is just a quality parameter without media type
+    // e.g., ";q=0.5" should be rejected
+    if (trimmed_len > 0 && start[0] == ';') {
+        LOGD("content_negotiation", "parse_accept_range: range starts with ';' - invalid media type");
+        return false;
+    }
 
     // For now, store range as string (foundation - no parameter handling yet)
     range->range = malloc(trimmed_len + 1);
     if (range->range) {
         memcpy(range->range, start, trimmed_len);
         range->range[trimmed_len] = '\0';
+        LOGD("content_negotiation", "parse_accept_range: range allocated successfully: '%s'", range->range);
     }
     range->parameters = NULL;
     range->next = NULL;
 
-    return range->range != NULL;
+    // Return true only if both quality parsing AND range allocation succeeded
+    bool result = (quality_parsed_successfully && range->range != NULL);
+    LOGD("content_negotiation", "parse_accept_range: result=%s (quality=%s, range=%s)", 
+         result ? "true" : "false",
+         quality_parsed_successfully ? "true" : "false",
+         range->range ? "true" : "false");
+    
+    return result;
 }
 
 /**
@@ -262,29 +315,37 @@ static httpd_content_negotiation_result_t* get_negotiation_result(httpd_req_t *r
  * @param result Result structure to free
  */
 void httpd_free_negotiation_result(httpd_content_negotiation_result_t *result) {
-    if (result) {
-        if (result->selected_media_type) {
-            free(result->selected_media_type);
-            result->selected_media_type = NULL;
-        }
-        if (result->selected_encoding) {
-            free(result->selected_encoding);
-            result->selected_encoding = NULL;
-        }
-        if (result->selected_language) {
-            free(result->selected_language);
-            result->selected_language = NULL;
-        }
-        if (result->selected_charset) {
-            free(result->selected_charset);
-            result->selected_charset = NULL;
-        }
-        if (result->vary_header_value) {
-            free(result->vary_header_value);
-            result->vary_header_value = NULL;
-        }
-        free(result);
+    if (!result) {
+        return;
     }
+
+    // Only free dynamically allocated strings, not static ones
+    // The function should only free memory that was allocated by the negotiation functions
+    if (result->selected_media_type) {
+        free(result->selected_media_type);
+        result->selected_media_type = NULL;
+    }
+    if (result->selected_encoding) {
+        free(result->selected_encoding);
+        result->selected_encoding = NULL;
+    }
+    if (result->selected_language) {
+        free(result->selected_language);
+        result->selected_language = NULL;
+    }
+    if (result->selected_charset) {
+        free(result->selected_charset);
+        result->selected_charset = NULL;
+    }
+    if (result->vary_header_value) {
+        free(result->vary_header_value);
+        result->vary_header_value = NULL;
+    }
+    
+    // Note: Do NOT free the result structure itself here
+    // The caller is responsible for freeing the result structure
+    // if it was dynamically allocated. If it's stack-allocated (like in tests),
+    // it will be automatically freed when it goes out of scope.
 }
 
 /**
@@ -367,7 +428,8 @@ esp_err_t httpd_negotiate_content(const httpd_accept_range_t *accept_ranges,
 
                 result->selected_media_type = strdup(server_type);
                 if (!result->selected_media_type) {
-                    httpd_free_negotiation_result(result);
+                    // Free the result structure itself since it was allocated with calloc
+                    free(result);
                     return ESP_ERR_NO_MEM;
                 }
 
@@ -506,18 +568,13 @@ esp_err_t middleware_content_negotiation(httpd_req_t *req,
         LOGD("content_negotiation", "middleware: parsed accept_ranges=%p", accept_ranges);
     }
 
-    // Perform negotiation if we have server capabilities, regardless of Accept header
-    // Negotiation should only happen if the request contains an Accept
-    // header (currently only Accept is used). Skipping negotiation when
-    // no Accept header prevents unnecessary Vary header generation
-    // and ensures fallback logic behaves correctly.
-    bool should_negotiate = false;
-    if (accept_ranges) {
-        should_negotiate = config->capabilities.media_type_count > 0 ||
+    // Perform negotiation if we have server capabilities
+    // Always negotiate when capabilities are available, even without Accept header
+    // This ensures consistent behavior and proper fallback to first capability
+    bool should_negotiate = config->capabilities.media_type_count > 0 ||
                            config->capabilities.encoding_count > 0 ||
                            config->capabilities.language_count > 0 ||
                            config->capabilities.charset_count > 0;
-    }
 
     LOGD("content_negotiation", "middleware: capabilities - media=%u, encoding=%u, language=%u, charset=%u, should_negotiate=%d",
          config->capabilities.media_type_count, config->capabilities.encoding_count,
