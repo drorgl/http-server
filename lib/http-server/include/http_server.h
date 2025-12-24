@@ -26,6 +26,7 @@
 
 #include <http_parser.h>
 #include "http_server_config.h"
+#include "httpd_chunked.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
@@ -91,7 +92,8 @@ initializer that should be kept in sync
         .keep_alive_count = 0,                          \
         .open_fn = NULL,                                \
         .close_fn = NULL,                               \
-        .uri_match_fn = NULL                            \
+        .uri_match_fn = NULL,                           \
+        .transfer_cfg = httpd_transfer_default_config   \
 }
 
 #define ESP_ERR_HTTPD_BASE              (0xb000)                    /*!< Starting number of HTTPD error codes */
@@ -292,6 +294,7 @@ typedef struct httpd_config {
      * of the `httpd_uri_match_func_t` function prototype)
      */
     httpd_uri_match_func_t uri_match_fn;
+    httpd_transfer_config_t transfer_cfg;  /*!< Transfer-Encoding configuration */
 } httpd_config_t;
 
 /**

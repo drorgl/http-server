@@ -11,6 +11,7 @@
 #include <stdbool.h>
 
 #include "http_server.h"
+#include "httpd_chunked.h"
 
 #ifdef ESP_PLATFORM
 #include <sys/socket.h>
@@ -88,6 +89,7 @@ struct sock_db {
     char pending_data[PARSER_BLOCK_SIZE];   /*!< Buffer for pending data to be received */
     size_t pending_len;                     /*!< Length of pending data to be received */
     bool for_async_req;                     /*!< If true, the socket will not be LRU purged */
+    bool close_after_async_complete;        /*!< If true, close session after async handler complete */
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     bool ws_handshake_done;                 /*!< True if it has done WebSocket handshake (if this socket is a valid WS) */
     bool ws_close;                          /*!< Set to true to close the socket later (when WS Close frame received) */
@@ -115,6 +117,8 @@ struct httpd_req_aux {
         char *value;
     } *resp_hdrs;                                   /*!< Additional headers in response packet */
     struct http_parser_url url_parse_res;           /*!< URL parsing result, used for retrieving URL elements */
+
+    httpd_chunked_ctx_t *chunk_ctx;                  /*!< Chunked context for Transfer-Encoding support */
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     bool ws_handshake_detect;                       /*!< WebSocket handshake detection flag */
     httpd_ws_type_t ws_type;                        /*!< WebSocket frame type */
@@ -453,6 +457,22 @@ int httpd_send(httpd_req_t *req, const char *buf, size_t buf_len);
  *  - ESP_FAIL       : if failed
  */
 int httpd_recv_with_opt(httpd_req_t *r, char *buf, size_t buf_len, bool halt_after_pending);
+
+/**
+ * @brief   For receiving HTTP request data (low level)
+ *
+ * This function calls the socket recv directly after handling pending data,
+ * without limits from remaining_len or chunked context.
+ *
+ * @param[in]  req    Pointer to HTTP request
+ * @param[out] buf    Pointer to the buffer which will be filled with the received data
+ * @param[in] buf_len Length of the buffer
+ *
+ * @return
+ *  - Length of data : if successful
+ *  - -1             : if failed
+ */
+int httpd_recv(httpd_req_t *r, char *buf, size_t buf_len);
 
 /**
  * @brief   For un-receiving HTTP request data

@@ -376,6 +376,36 @@ static esp_err_t cb_headers_complete(http_parser *parser)
     r->content_len = ((int)parser->content_length != -1 ?
                       parser->content_length : 0);
 
+    /* Check for Transfer-Encoding: chunked */
+    struct httpd_data *hd = (struct httpd_data *)r->handle;
+    char te[64];
+    te[0] = '\0';
+    if (httpd_req_get_hdr_value_str(r, "Transfer-Encoding", te, sizeof(te)) == ESP_OK &&
+        strstr(te, "chunked") != NULL &&
+        hd->config.transfer_cfg.enable_chunked_encoding) {
+        ra->chunk_ctx = calloc(1, sizeof(httpd_chunked_ctx_t));
+        if (ra->chunk_ctx) {
+            httpd_parse_chunked_request(r, ra->chunk_ctx);
+            LOGD(TAG, LOG_FMT("Chunked encoding detected"));
+        } else {
+            LOGW(TAG, LOG_FMT("Failed to allocate chunk_ctx"));
+            parser_data->error = HTTPD_500_INTERNAL_SERVER_ERROR;
+            parser_data->status = PARSING_FAILED;
+            return ESP_FAIL;
+        }
+        ra->remaining_len = SIZE_MAX; /* Unknown length for chunked */
+
+        /* Pause parsing so http_parser doesn't consume chunk header/body */
+        if (pause_parsing(parser, parser_data->last.at) != ESP_OK) {
+            parser_data->error = HTTPD_500_INTERNAL_SERVER_ERROR;
+            parser_data->status = PARSING_FAILED;
+            return ESP_FAIL;
+        }
+        parser_data->status = PARSING_COMPLETE;
+        esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ON_HEADER, &(ra->sd->fd), sizeof(int));
+        return ESP_OK;
+    }
+
     LOGD(TAG, LOG_FMT("bytes read     = %" PRId32 ""),  parser->nread);
     LOGD(TAG, LOG_FMT("content length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(r->content_len));
 
@@ -696,6 +726,7 @@ static void init_req_aux(struct httpd_req_aux *ra, httpd_config_t *config)
     ra->first_chunk_sent = 0;
     ra->req_hdrs_count = 0;
     ra->resp_hdrs_count = 0;
+    ra->chunk_ctx = NULL;
 #if CONFIG_HTTPD_WS_SUPPORT
     ra->ws_handshake_detect = false;
 #endif
@@ -705,6 +736,12 @@ static void init_req_aux(struct httpd_req_aux *ra, httpd_config_t *config)
 static void httpd_req_cleanup(httpd_req_t *r)
 {
     struct httpd_req_aux *ra = r->aux;
+
+    /* Free chunked context if allocated */
+    if (ra->chunk_ctx) {
+        free(ra->chunk_ctx);
+        ra->chunk_ctx = NULL;
+    }
 
     /* Check if the context has changed and needs to be cleared */
     if ((r->ignore_sess_ctx_changes == false) && (ra->sd->ctx != r->sess_ctx)) {
@@ -815,14 +852,15 @@ esp_err_t httpd_req_delete(struct httpd_data *hd)
     httpd_req_t *r = &hd->hd_req;
     struct httpd_req_aux *ra = r->aux;
 
-    /* Finish off reading any pending/leftover data */
-    while (ra->remaining_len) {
-        /* Any length small enough not to overload the stack, but large
-         * enough to finish off the buffers fast */
-        char dummy[CONFIG_HTTPD_PURGE_BUF_LEN];
-        int recv_len = MIN(sizeof(dummy), ra->remaining_len);
-        recv_len = httpd_req_recv(r, dummy, recv_len);
-        if (recv_len <= 0) {
+    /* Finish off reading any pending/leftover data (Content-Length or chunked) */
+    char dummy[512];  // Fixed size purge buffer (cross-platform)
+    while (true) {
+        int recv_len = httpd_req_recv(r, dummy, sizeof(dummy));
+        if (recv_len == 0) {
+            // EOF for CL or final chunk reached
+            break;
+        }
+        if (recv_len < 0) {
             httpd_req_cleanup(r);
             return ESP_FAIL;
         }
@@ -830,9 +868,6 @@ esp_err_t httpd_req_delete(struct httpd_data *hd)
         LOGD(TAG, LOG_FMT("purging data size : %d bytes"), recv_len);
 
 #ifdef CONFIG_HTTPD_LOG_PURGE_DATA
-        /* Enabling this will log discarded binary HTTP content data at
-         * Debug level. For large content data this may not be desirable
-         * as it will clutter the log */
         LOGD(TAG, "================= PURGED DATA =================");
         LOG_BUFFER_HEX_LEVEL(TAG, dummy, recv_len, LOG_DEBUG);
         LOGD(TAG, "===============================================");

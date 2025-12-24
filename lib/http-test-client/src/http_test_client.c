@@ -445,11 +445,15 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
         // Read remaining body data
         size_t total_body_read = body_bytes_in_buf;
 
-        while (total_body_read < content_length) {
+    while (total_body_read < content_length) {
             bytes_read = recv(client_handle->sockfd, response->body + total_body_read, content_length - total_body_read, 0);
             if (bytes_read == -1) {
                 http_test_client_free_response(response);
+                #ifdef _WIN32
+                LOGD(TAG, "Error reading response body: %d", WSAGetLastError());
+                #else
                 LOGD(TAG, "Error reading response body: %s", strerror(errno));
+                #endif
                 return HTTP_TEST_CLIENT_ERR_RECV;
             }
             if (bytes_read == 0) {

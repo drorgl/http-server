@@ -660,20 +660,15 @@ esp_err_t httpd_stop(httpd_handle_t handle)
     memset(&msg, 0, sizeof(msg));
     msg.hc_msg = HTTPD_CTRL_SHUTDOWN;
     int ret = 0;
-    
-    LOGD(TAG, LOG_FMT("sent control msg to stop server"));
-    while (hd->hd_td.status != THREAD_STOPPED) {
-        LOGD(TAG, "status %d", hd->hd_td.status);
 
-        LOGD(TAG, LOG_FMT("sending shutdown message from msg_fd=%d to ctrl_port=%d, receiving on ctrl_fd=%d"), hd->msg_fd, hd->config.ctrl_port, hd->ctrl_fd);
-        if ((ret = cs_send_to_ctrl_sock(hd->msg_fd, hd->config.ctrl_port, &msg, sizeof(msg))) < 0) {
-            LOGE(TAG, "Failed to send shutdown signal err=%d", ret);
-            return ESP_FAIL;
-        }
-
-        httpd_os_thread_sleep(100);
+    if ((ret = cs_send_to_ctrl_sock(hd->msg_fd, hd->config.ctrl_port, &msg, sizeof(msg))) < 0) {
+        LOGE(TAG, "Failed to send shutdown signal err=%d", ret);
+        return ESP_FAIL;
     }
-    // httpd_os_thread_sleep(100);
+    LOGD(TAG, LOG_FMT("sent control msg to stop server"));
+
+    // Wait for the thread to exit
+    httpd_os_thread_join(hd->hd_td.handle);
 
 
     /* Release global user context, if not NULL */

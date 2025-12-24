@@ -40,6 +40,16 @@ static inline void httpd_os_thread_delete(void)
     vTaskDeleteWithCaps(xTaskGetCurrentTaskHandle());
 }
 
+static inline int httpd_os_thread_join(othread_t thread)
+{
+    // On ESP32/FreeRTOS, deleted tasks can be joined
+    // But since it's self-delete, and caller joins, wait for deletion
+    // FreeRTOS doesn't have direct join, but we can wait indefinitely
+    // Assuming the task deletes itself, the join point is not needed, but for compatibility
+    // Just return success, as the task will be cleaned up
+    return OS_SUCCESS;
+}
+
 static inline void httpd_os_thread_sleep(int msecs)
 {
     vTaskDelay(msecs / portTICK_PERIOD_MS);

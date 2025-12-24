@@ -28,7 +28,7 @@ static inline int httpd_os_thread_create(othread_t *thread,
     pthread_attr_t thread_attr;
     pthread_attr_init(&thread_attr);
     pthread_attr_setstacksize(&thread_attr, stacksize);
-    pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED);
+    pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE);
     int ret = pthread_create((pthread_t *)thread, &thread_attr,(void *(*)(void *)) thread_routine, arg);
     if (ret == 0) {
         return OS_SUCCESS;
@@ -41,6 +41,11 @@ static inline void httpd_os_thread_delete(void)
 {
     int x;
     pthread_exit((void *)&x);
+}
+
+static inline int httpd_os_thread_join(othread_t thread)
+{
+    return pthread_join(thread, NULL);
 }
 
 static inline void httpd_os_thread_sleep(int msecs)

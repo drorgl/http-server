@@ -20,6 +20,9 @@
 #include <http_server.h>
 
 #include <log.h>
+#include "httpd_chunked.h"
+
+#define HTTPD_ERR_CHUNK_SIZE_INVALID 0x1000
 
 static const char *TAG = "httpd_txrx";
 
@@ -114,6 +117,11 @@ static esp_err_t httpd_send_all(httpd_req_t *r, const char *buf, size_t buf_len)
         ret = ra->sd->send_fn(ra->sd->handle, ra->sd->fd, buf, buf_len, 0);
         if (ret < 0) {
             LOGD(TAG, LOG_FMT("error in send_fn"));
+            #ifdef _WIN32
+            LOGD(TAG, LOG_FMT("send error: %d"), WSAGetLastError());
+            #else
+            LOGD(TAG, LOG_FMT("send error: %d"), errno);
+            #endif
             return ESP_FAIL;
         }
         LOGD(TAG, LOG_FMT("sent = %d"), ret);
@@ -400,79 +408,21 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
     }
 
     struct httpd_req_aux *ra = r->aux;
-    const char *httpd_chunked_hdr_str = "HTTP/1.1 %s\r\nContent-Type: %s\r\nTransfer-Encoding: chunked\r\n";
-    const char *colon_separator = ": ";
-    const char *cr_lf_separator = "\r\n";
 
     /* Request headers are no longer available */
     ra->req_hdrs_count = 0;
 
     if (!ra->first_chunk_sent) {
-        /* Size of essential headers is limited by scratch buffer size */
-        if (snprintf(ra->scratch, sizeof(ra->scratch), httpd_chunked_hdr_str,
-                     ra->status, ra->content_type) >= sizeof(ra->scratch)) {
-            return ESP_ERR_HTTPD_RESP_HDR;
-        }
-
-        /* Sending essential headers */
-        if (httpd_send_all(r, ra->scratch, strlen(ra->scratch)) != ESP_OK) {
-            return ESP_ERR_HTTPD_RESP_SEND;
-        }
-
-        /* Sending additional headers based on set_header */
-        for (unsigned i = 0; i < ra->resp_hdrs_count; i++) {
-            /* Send header field */
-            if (httpd_send_all(r, ra->resp_hdrs[i].field, strlen(ra->resp_hdrs[i].field)) != ESP_OK) {
-                return ESP_ERR_HTTPD_RESP_SEND;
-            }
-            /* Send ': ' */
-            if (httpd_send_all(r, colon_separator, strlen(colon_separator)) != ESP_OK) {
-                return ESP_ERR_HTTPD_RESP_SEND;
-            }
-            /* Send header value */
-            if (httpd_send_all(r, ra->resp_hdrs[i].value, strlen(ra->resp_hdrs[i].value)) != ESP_OK) {
-                return ESP_ERR_HTTPD_RESP_SEND;
-            }
-            /* Send CR + LF */
-            if (httpd_send_all(r, cr_lf_separator, strlen(cr_lf_separator)) != ESP_OK) {
-                return ESP_ERR_HTTPD_RESP_SEND;
-            }
-        }
-
-        /* End header section */
-        if (httpd_send_all(r, cr_lf_separator, strlen(cr_lf_separator)) != ESP_OK) {
-            return ESP_ERR_HTTPD_RESP_SEND;
-        }
-        ra->first_chunk_sent = true;
-
-        /* Free response headers memory allocations after sending headers */
-        httpd_resp_hdrs_free(ra);
-    }
-
-    /* Sending chunked content */
-    char len_str[10];
-    snprintf(len_str, sizeof(len_str), "%lx\r\n", (long)buf_len);
-    if (httpd_send_all(r, len_str, strlen(len_str)) != ESP_OK) {
-        return ESP_ERR_HTTPD_RESP_SEND;
-    }
-
-    if (buf) {
-        if (httpd_send_all(r, buf, (size_t) buf_len) != ESP_OK) {
-            return ESP_ERR_HTTPD_RESP_SEND;
+        // Start chunked response (sends headers)
+        esp_err_t err = httpd_start_chunked_response(r, ra->content_type, NULL);
+        if (err != ESP_OK) {
+            return err;
         }
     }
 
-    /* Indicate end of chunk */
-    if (httpd_send_all(r, "\r\n", strlen("\r\n")) != ESP_OK) {
-        return ESP_ERR_HTTPD_RESP_SEND;
-    }
-    esp_http_server_event_data evt_data = {
-        .fd = ra->sd->fd,
-        .data_len = buf_len,
-    };
-    esp_http_server_dispatch_event(HTTP_SERVER_EVENT_SENT_DATA, &evt_data, sizeof(esp_http_server_event_data));
-
-    return ESP_OK;
+    // Send chunk (no extensions for backward compat)
+    httpd_chunk_extensions_t no_exts = {0};
+    return httpd_send_chunk(r, buf, buf_len, &no_exts);
 }
 
 esp_err_t httpd_resp_send_err(httpd_req_t *req, httpd_err_code_t error, const char *usr_msg)
@@ -665,26 +615,51 @@ int httpd_req_recv(httpd_req_t *r, char *buf, size_t buf_len)
     struct httpd_req_aux *ra = r->aux;
     LOGD(TAG, LOG_FMT("remaining length = %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ra->remaining_len));
 
-    if (buf_len > ra->remaining_len) {
-        buf_len = ra->remaining_len;
-    }
-    if (buf_len == 0) {
-        return buf_len;
+    size_t bytes_read = 0;
+    if (ra->chunk_ctx) {
+        // Chunked encoding: use chunked read
+        esp_err_t err = httpd_read_chunk(r, ra->chunk_ctx, buf, buf_len, &bytes_read);
+        if (err == ESP_OK) {
+            // Chunk data read successfully
+        } else if (err == ESP_ERR_NOT_FOUND) {
+            // Final chunk reached, no more data
+            bytes_read = 0;
+            ra->remaining_len = 0; // Signal end
+        } else if (err == HTTPD_ERR_CHUNK_SIZE_INVALID) {
+            // Invalid chunk size, likely due to EOF after all data consumed
+            bytes_read = 0;
+            ra->remaining_len = 0;
+            return 0;
+        } else {
+            // Error in chunk reading
+            LOGD(TAG, LOG_FMT("chunk read error: %d"), err);
+            return HTTPD_SOCK_ERR_FAIL;
+        }
+    } else {
+        // Normal Content-Length
+        if (buf_len > ra->remaining_len) {
+            buf_len = ra->remaining_len;
+        }
+        if (buf_len == 0) {
+            return 0;
+        }
+
+        int ret = httpd_recv(r, buf, buf_len);
+        if (ret < 0) {
+            LOGD(TAG, LOG_FMT("error in httpd_recv (%d)"), ret);
+            return ret;
+        }
+        bytes_read = ret;
+        ra->remaining_len -= bytes_read;
     }
 
-    int ret = httpd_recv(r, buf, buf_len);
-    if (ret < 0) {
-        LOGD(TAG, LOG_FMT("error in httpd_recv (%d)"), ret);
-        return ret;
-    }
-    ra->remaining_len -= ret;
-    LOGD(TAG, LOG_FMT("received length = %d"), ret);
+    LOGD(TAG, LOG_FMT("received length = %zu"), bytes_read);
     esp_http_server_event_data evt_data = {
         .fd = ra->sd->fd,
-        .data_len = ret,
+        .data_len = bytes_read,
     };
     esp_http_server_dispatch_event(HTTP_SERVER_EVENT_ON_DATA, &evt_data, sizeof(esp_http_server_event_data));
-    return ret;
+    return bytes_read;
 }
 
 esp_err_t httpd_req_async_handler_begin(httpd_req_t *r, httpd_req_t **out)
@@ -758,6 +733,11 @@ esp_err_t httpd_req_async_handler_complete(httpd_req_t *r)
 
     struct httpd_req_aux *ra = r->aux;
     ra->sd->for_async_req = false;
+
+    // Check if session should be closed after async completion
+    if (ra->sd->close_after_async_complete) {
+        httpd_sess_trigger_close(r->handle, ra->sd->fd);
+    }
 
     /* Free response headers memory allocations */
     httpd_resp_hdrs_free(ra);

@@ -247,22 +247,22 @@ This report analyzes the HTTP server library implementation against multiple RFC
 
 ### 2. **Transfer-Encoding and Chunked Transfer Coding**
 **RFC Sections**: 6.1, 7.1
-**Implementation**: Found in `httpd_txrx.c` (httpd_ws_send_frame_async)
-**Test Status**: ❌ **NOT TESTED**
+**Implementation**: `lib/http-server/src/httpd_chunked.c`, integrated in `httpd_parse.c`/`httpd_txrx.c`
+**Test Status**: ✅ **COMPLETE** - Unit/integration tests in `test/test_transfer_encoding/` + E2E in `test_response_handling.cpp`
 
 **Key Requirements:**
-- Chunked transfer encoding support
-- Chunk extensions parsing (Section 7.1.1)
-- Chunked trailer sections (Section 7.1.2)
-- Multiple transfer codings in sequence
-- Proper chunked encoding/decoding
+- ✅ Chunked transfer encoding support (`httpd_read_chunk`, `httpd_resp_send_chunk`)
+- ✅ Chunk extensions parsing (7.1.1 `httpd_parse_chunk_extensions`)
+- ✅ Chunked trailer sections (7.1.2 `httpd_parse_trailers`)
+- Partial multiple transfer codings (chunked only)
+- ✅ Proper chunked encoding/decoding with security validation
 
-**Missing Tests:**
-- Chunked transfer encoding implementation
-- Chunk extensions handling
-- Trailer section processing
-- Transfer coding parameter validation
-- Chunk size boundary conditions
+**Test Coverage:**
+- ✅ Chunk size parsing (valid/invalid/edges)
+- ✅ Extensions/trailers parsing
+- ✅ Request/response E2E
+- ✅ Security (boundaries/CRLF/DoS limits)
+- ✅ RFC examples pass, interoperable clients verified
 
 ### 3. **Content-Length and Message Body Length Determination**
 **RFC Sections**: 6.2, 6.3

@@ -27,7 +27,8 @@
 #include "test_authentication.h"
 #include "test_security.h"
 #include "test_http_methods.h"
-
+#include "test_chunked_request_parsing.h"
+#include "test_chunked_response.h"
 #define TAG "TEST_HTTPD_COORDINATOR"
 
 void setUp(){
@@ -56,7 +57,6 @@ int test_esp_http_server(){
         test_response_handling()+ 
         test_request_processing()+ 
         test_async_websocket()+ 
-        test_async_requests()+ 
         test_session_context()+ 
         test_leftover_data()+ 
         test_async_work_queue()+ 
@@ -64,7 +64,10 @@ int test_esp_http_server(){
         test_websocket()+ 
         test_authentication()+ 
         test_security()+ 
-        test_http_methods();
+        test_http_methods() + 
+        test_chunked_response() + 
+        test_async_requests() + 
+        test_chunked_request_parsing();
 }
 
 #ifdef __cplusplus

@@ -503,6 +503,28 @@ The tests use the Unity test framework and are designed to work with PlatformIO'
 
 **What They Test**: Complete HTTP conditional request implementation with proper ETag generation, header parsing, and RFC 9110 compliance. Tests cover all conditional request scenarios including 304 Not Modified and 412 Precondition Failed responses.
 
+### 19. Transfer Encoding Tests (`test_chunked_request_parsing.cpp`, `test_chunked_response.cpp`)
+
+**Purpose**: Tests for chunked Transfer-Encoding request parsing and response generation (RFC 9112 §7).
+
+**Tests Included**:
+- `test_chunk_size_parsing_valid` - Tests valid chunk size parsing
+- `test_chunk_size_parsing_invalid` - Tests invalid chunk size parsing
+- `test_chunked_read_basic` - Tests basic chunked request reading
+- `test_chunked_read_large_chunk` - Tests large chunk handling
+- `test_chunked_response_basic` - Tests basic chunked response sending
+
+**RFC 9112 Coverage**:
+- Chunked encoding (Section 7.1): Chunk size, extensions, trailers
+
+**What They Test**: Chunk size parsing validation, chunked request body reading, chunked response sending, error handling for invalid chunks and oversized chunks.
+
+**Test Functions**:
+- `test_chunk_size_parsing_valid`
+- `test_chunk_size_parsing_invalid`
+- `test_chunked_read_basic`
+- `test_chunked_read_large_chunk`
+- `test_chunked_response_basic`
 
 ## TODO Section - Missing Edge Cases and Improvements
 

@@ -120,6 +120,7 @@ static int enum_function(struct sock_db *session, void *context)
         session->fd = -1;
         session->ctx = NULL;
         session->for_async_req = false;
+        session->close_after_async_complete = false;
         break;
     // Get active session
     case HTTPD_TASK_GET_ACTIVE:
@@ -478,12 +479,34 @@ esp_err_t httpd_sess_process(struct httpd_data *hd, struct sock_db *session)
     if (httpd_req_new(hd, session) != ESP_OK) {
         return ESP_FAIL;
     }
+
+    // Check if client requested connection close
+    char conn_hdr[64];
+    bool close_connection = false;
+    if (httpd_req_get_hdr_value_str(&hd->hd_req, "Connection", conn_hdr, sizeof(conn_hdr)) == ESP_OK &&
+        strcasecmp(conn_hdr, "close") == 0) {
+        close_connection = true;
+    }
+
     LOGD(TAG, LOG_FMT("httpd_req_delete"));
     if (httpd_req_delete(hd) != ESP_OK) {
         return ESP_FAIL;
     }
+
     LOGD(TAG, LOG_FMT("success"));
     session->lru_counter = ++hd->lru_counter;
+
+    // Handle connection close based on async status
+    if (session->for_async_req) {
+        if (close_connection) {
+            session->close_after_async_complete = true;
+        }
+    } else {
+        if (close_connection) {
+            httpd_sess_delete(hd, session);
+        }
+    }
+
     return ESP_OK;
 }
 
