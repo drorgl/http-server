@@ -77,7 +77,8 @@ void given_server_with_ws_handler_when_client_sends_upgrade_request_then_handsha
         .user_ctx   = NULL,
         .is_websocket = true, // Mark as WebSocket URI
         .handle_ws_control_frames = false,
-        .supported_subprotocol = NULL
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
@@ -174,7 +175,8 @@ void given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchang
         .user_ctx   = NULL,
         .is_websocket = true,
         .handle_ws_control_frames = false,
-        .supported_subprotocol = NULL
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_data_uri));
 
@@ -299,7 +301,8 @@ void given_ws_connection_when_client_sends_close_frame_then_server_responds_with
         .user_ctx   = NULL,
         .is_websocket = true,
         .handle_ws_control_frames = false, // Server should handle PING/PONG/CLOSE internally
-        .supported_subprotocol = NULL
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
@@ -417,7 +420,11 @@ void given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_ret
         .uri        = "/ws_info",
         .method     = HTTP_GET,
         .handler    = ws_test_handler,
-        .is_websocket = true
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
@@ -487,7 +494,9 @@ void given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_han
         .handler    = ws_test_handler,
         .user_ctx   = NULL,
         .is_websocket = true,
-        .supported_subprotocol = long_subprotocol
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = long_subprotocol,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
@@ -560,6 +569,9 @@ void given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds(void
         .handler    = ws_data_frame_handler,
         .user_ctx   = NULL,
         .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_data_uri));
 
@@ -633,6 +645,9 @@ void given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds(void
         .handler    = ws_data_frame_handler,
         .user_ctx   = NULL,
         .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_data_uri));
 
@@ -707,7 +722,9 @@ void given_ws_connection_when_client_sends_ping_then_server_responds_with_pong(v
         .handler    = ws_test_handler,
         .user_ctx   = NULL,
         .is_websocket = true,
-        .handle_ws_control_frames = false // Disable automatic handling by user handler, enable internal server handling
+        .handle_ws_control_frames = false, // Disable automatic handling by user handler, enable internal server handling
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
@@ -770,7 +787,10 @@ void given_ws_connection_when_idle_then_keep_alive_maintains_connection(void)
         .method     = HTTP_GET,
         .handler    = ws_test_handler,
         .user_ctx   = NULL,
-        .is_websocket = true
+        .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL,
+        .supported_extensions = NULL
     };
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
@@ -806,6 +826,168 @@ void given_ws_connection_when_idle_then_keep_alive_maintains_connection(void)
     httpd_stop(handle);
 }
 
+/**
+ * Test: given_server_with_ws_extensions_when_client_requests_upgrade_then_extensions_negotiated
+ *
+ * Purpose: Verify that a server with supported extensions includes Sec-WebSocket-Extensions in handshake response.
+ * Expected: Server responds with 101 Switching Protocols and negotiated extensions header.
+ */
+void given_server_with_ws_extensions_when_client_requests_upgrade_then_extensions_negotiated(void)
+{
+    // Given: A running server with WebSocket URI supporting extensions
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9026; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t ws_uri = {
+        .uri        = "/ws_ext",
+        .method     = HTTP_GET,
+        .handler    = ws_test_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL,
+        .supported_extensions = "permessage-deflate, x-custom-ext"
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
+
+    // When: A client connects and sends upgrade request with extension offers
+    struct sockaddr_in serv_addr;
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char request_buffer[512];
+    snprintf(request_buffer, sizeof(request_buffer),
+             "GET /ws_ext HTTP/1.1\r\n"
+             "Host: localhost:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "Sec-WebSocket-Extensions: permessage-deflate\r\n\r\n",
+             config.server_port, client_key);
+
+    send(sockfd, request_buffer, strlen(request_buffer), 0);
+
+    // Then: Server responds with 101 and negotiated extensions
+    char response_buffer[1024] = {0};
+    httpd_os_thread_sleep(100);
+
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+    int recv_ret = recv(sockfd, response_buffer, sizeof(response_buffer) - 1, 0);
+    TEST_ASSERT_GREATER_THAN(0, recv_ret);
+    response_buffer[recv_ret] = '\0';
+
+    // Verify successful handshake
+    TEST_ASSERT_NOT_NULL(strstr(response_buffer, "HTTP/1.1 101 Switching Protocols"));
+    TEST_ASSERT_NOT_NULL(strstr(response_buffer, "Sec-WebSocket-Accept:"));
+
+    // Verify negotiated extensions header is present
+    TEST_ASSERT_NOT_NULL(strstr(response_buffer, "Sec-WebSocket-Extensions: permessage-deflate"));
+
+    // Cleanup
+#ifdef _WIN32
+    closesocket(sockfd);
+#else
+    close(sockfd);
+#endif
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_with_ws_extensions_when_client_offers_unsupported_then_no_extensions_header
+ *
+ * Purpose: Verify that when client offers only unsupported extensions, no Sec-WebSocket-Extensions header is sent.
+ * Expected: Server responds with 101 Switching Protocols but no extensions header.
+ */
+void given_server_with_ws_extensions_when_client_offers_unsupported_then_no_extensions_header(void)
+{
+    // Given: A running server with WebSocket URI supporting specific extensions
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9027; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t ws_uri = {
+        .uri        = "/ws_ext_limited",
+        .method     = HTTP_GET,
+        .handler    = ws_test_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = NULL,
+        .supported_extensions = "permessage-deflate"  // Only supports deflate
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
+
+    // When: Client offers extensions that server doesn't support
+    struct sockaddr_in serv_addr;
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, sockfd);
+
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(config.server_port);
+    serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    TEST_ASSERT_EQUAL(0, connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)));
+
+    const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
+    char request_buffer[512];
+    snprintf(request_buffer, sizeof(request_buffer),
+             "GET /ws_ext_limited HTTP/1.1\r\n"
+             "Host: localhost:%d\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Key: %s\r\n"
+             "Sec-WebSocket-Version: 13\r\n"
+             "Sec-WebSocket-Extensions: x-unsupported-ext, another-unsupported\r\n\r\n",
+             config.server_port, client_key);
+
+    send(sockfd, request_buffer, strlen(request_buffer), 0);
+
+    // Then: Server responds with 101 but no Sec-WebSocket-Extensions header
+    char response_buffer[1024] = {0};
+    httpd_os_thread_sleep(100);
+
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+
+    int recv_ret = recv(sockfd, response_buffer, sizeof(response_buffer) - 1, 0);
+    TEST_ASSERT_GREATER_THAN(0, recv_ret);
+    response_buffer[recv_ret] = '\0';
+
+    // Verify successful handshake
+    TEST_ASSERT_NOT_NULL(strstr(response_buffer, "HTTP/1.1 101 Switching Protocols"));
+    TEST_ASSERT_NOT_NULL(strstr(response_buffer, "Sec-WebSocket-Accept:"));
+
+    // Verify NO extensions header is present (no common extensions)
+    TEST_ASSERT_NULL(strstr(response_buffer, "Sec-WebSocket-Extensions:"));
+
+    // Cleanup
+#ifdef _WIN32
+    closesocket(sockfd);
+#else
+    close(sockfd);
+#endif
+    httpd_stop(handle);
+}
+
 
 int test_websocket(void) {
     // UNITY_BEGIN();
@@ -820,6 +1002,10 @@ int test_websocket(void) {
     RUN_TEST(given_ws_connection_when_idle_then_keep_alive_maintains_connection);
     RUN_TEST(given_ws_connection_when_client_sends_ping_then_server_responds_with_pong);
 
-    // return UNITY_END() | 
+    // Extension negotiation E2E tests
+    RUN_TEST(given_server_with_ws_extensions_when_client_requests_upgrade_then_extensions_negotiated);
+    RUN_TEST(given_server_with_ws_extensions_when_client_offers_unsupported_then_no_extensions_header);
+
+    // return UNITY_END() |
     return test_websocket_upgrade_handshake();
 }

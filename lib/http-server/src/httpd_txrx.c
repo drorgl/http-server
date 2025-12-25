@@ -327,6 +327,16 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
         return ESP_ERR_HTTPD_INVALID_REQ;
     }
 
+    /* GUARD RAIL: Prevent double response sending which causes HTTP stream corruption
+     * Added in response to Range middleware double-send bug
+     * See: test_e2e_range_valid_open_ended_range failure in normal execution
+     */
+    if (r->response_sent) {
+        LOGE(TAG, LOG_FMT("Attempted to send response when one was already sent"));
+        return ESP_ERR_INVALID_STATE;
+    }
+    r->response_sent = true;
+
     struct httpd_req_aux *ra = r->aux;
     const char *httpd_hdr_str = "HTTP/1.1 %s\r\nContent-Type: %s\r\nContent-Length: %zd\r\n";
     const char *colon_separator = ": ";

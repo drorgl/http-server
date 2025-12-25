@@ -29,6 +29,8 @@
 #include "test_http_methods.h"
 #include "test_chunked_request_parsing.h"
 #include "test_chunked_response.h"
+#include "test_websocket_extensions.h"
+#include "test_websocket_extensions_e2e.h"
 #define TAG "TEST_HTTPD_COORDINATOR"
 
 void setUp(){
@@ -49,25 +51,29 @@ void tearDown(){
 
 int test_esp_http_server(){
     return
-        test_server_lifecycle()+ 
-        test_uri_handlers()+ 
-        test_utilities()+ 
-        test_client_management()+ 
-        test_error_handling()+ 
-        test_response_handling()+ 
-        test_request_processing()+ 
-        test_async_websocket()+ 
-        test_session_context()+ 
-        test_leftover_data()+ 
-        test_async_work_queue()+ 
-        test_empty_header()+ 
-        test_websocket()+ 
-        test_authentication()+ 
-        test_security()+ 
-        test_http_methods() + 
-        test_chunked_response() + 
-        test_async_requests() + 
-        test_chunked_request_parsing();
+        test_server_lifecycle()+
+        test_uri_handlers()+
+        test_utilities()+
+        test_client_management()+
+        test_error_handling()+
+        test_response_handling()+
+        test_request_processing()+
+        test_async_websocket()+
+        test_session_context()+
+        test_leftover_data()+
+        test_async_work_queue()+
+        test_empty_header()+
+        test_authentication()+
+        test_security()+
+        test_http_methods() +
+        test_chunked_response() +
+        test_async_requests() +
+        test_chunked_request_parsing() +
+        test_websocket()+
+        test_websocket_extensions_api() +
+        test_websocket_extensions_parser() +
+        test_websocket_extensions_integration() +
+        test_websocket_extensions_e2e();
 }
 
 #ifdef __cplusplus

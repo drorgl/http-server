@@ -96,7 +96,557 @@ static bool httpd_ws_get_response_subprotocol(const char *supported_subprotocol,
 
 }
 
-esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *supported_subprotocol)
+/**
+ * @brief Validate if a string is a valid RFC 6455 token
+ *
+ * Tokens consist of any character except control characters, separators, and DQUOTE.
+ * Valid characters: [a-zA-Z0-9!#$%&'*+-.^_`|~]
+ *
+ * @param str The string to validate
+ * @return true if valid token, false otherwise
+ */
+static bool httpd_ws_is_valid_token(const char *str)
+{
+    if (!str || !*str) {
+        return false;
+    }
+
+    for (const char *p = str; *p; p++) {
+        char c = *p;
+        // RFC 6455 token characters: any char except ctl, separators, DQUOTE
+        // separators: ()<>@,;:\"/[]?={} space tab
+        if (c <= 31 || c >= 127 || // control chars and non-ASCII
+            c == '(' || c == ')' || c == '<' || c == '>' || c == '@' ||
+            c == ',' || c == ';' || c == ':' || c == '\\' || c == '"' ||
+            c == '/' || c == '[' || c == ']' || c == '?' || c == '=' ||
+            c == '{' || c == '}' || c == ' ' || c == '\t') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Validate parameter value format and optionally check ranges
+ *
+ * Values can be tokens, quoted strings, or empty strings.
+ * For known parameters, validates value ranges.
+ *
+ * @param key The parameter key
+ * @param value The parameter value (with quotes if present)
+ * @return ESP_OK if valid, ESP_ERR_INVALID_ARG if invalid
+ */
+static esp_err_t httpd_ws_validate_param_value(const char *key, const char *value)
+{
+    if (!key || !value) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Handle quoted values (basic validation)
+    if (value[0] == '"') {
+        // Must be properly quoted
+        size_t len = strlen(value);
+        if (len < 2 || value[len - 1] != '"') {
+            LOGW(TAG, "Malformed quoted parameter value: %s", value);
+            return ESP_ERR_INVALID_ARG;
+        }
+        // Additional validation could go here (escape sequences, etc.)
+    } else {
+        // Unquoted value - should be a token or valid sequence
+        if (!httpd_ws_is_valid_token(value) && strcmp(value, "") != 0) {
+            // Allow empty strings, but non-empty must be valid tokens
+            LOGW(TAG, "Invalid unquoted parameter value: %s", value);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+
+    // Range checking for known parameters
+    if (strcmp(key, "client_max_window_bits") == 0 ||
+        strcmp(key, "server_max_window_bits") == 0) {
+        // For permessage-deflate, values should be 8-15 inclusive
+        char unquoted[32] = {0};
+        if (value[0] == '"' && value[strlen(value)-1] == '"') {
+            size_t len = strlen(value) - 2;
+            if (len >= sizeof(unquoted)) {
+                return ESP_ERR_INVALID_ARG;
+            }
+            memcpy(unquoted, value + 1, len);
+            unquoted[len] = '\0';
+        } else {
+            if (strlen(value) >= sizeof(unquoted)) {
+                return ESP_ERR_INVALID_ARG;
+            }
+            strcpy(unquoted, value);
+        }
+
+        char *endptr;
+        long num = strtol(unquoted, &endptr, 10);
+        if (*endptr != '\0' || num < 8 || num > 15) {
+            LOGW(TAG, "Invalid window bits value: %s (must be 8-15)", unquoted);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+
+    return ESP_OK;
+}
+
+/**
+ * @brief Parse WebSocket extension parameters from a parameter string
+ *
+ * @param param_str The parameter string (e.g. "client_max_window_bits=15; server_max_window_bits=15")
+ * @param params Array to store parsed parameters
+ * @param num_params Pointer to store number of parameters found
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG for malformed parameters, ESP_ERR_NO_MEM on allocation failure
+ */
+esp_err_t httpd_ws_parse_extension_params(const char *param_str, extension_param_t **params, size_t *num_params)
+{
+    if (!param_str || param_str[0] == '\0') {
+        *params = NULL;
+        *num_params = 0;
+        return ESP_OK;
+    }
+
+    /* Create a copy of param_str since strtok_r modifies the string */
+    char *param_copy = strdup(param_str);
+    if (!param_copy) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Count parameters first */
+    size_t param_count = 0;
+    char *temp = param_copy;
+    while (*temp) {
+        if (*temp == ';') {
+            param_count++;
+        }
+        temp++;
+    }
+    param_count++; /* Add one for the last parameter */
+
+    /* Allocate memory for parameters - limit to prevent DoS */
+    if (param_count > 10) {
+        LOGW(TAG, "Too many extension parameters: %"NEWLIB_NANO_COMPAT_FORMAT, NEWLIB_NANO_COMPAT_CAST(param_count));
+        free(param_copy);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    extension_param_t *param_array = (extension_param_t *)malloc(param_count * sizeof(extension_param_t));
+    if (!param_array) {
+        free(param_copy);
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Parse each parameter */
+    char *saveptr = NULL;
+    char *token = strtok_r(param_copy, ";", &saveptr);
+    size_t parsed_count = 0;
+
+    while (token && parsed_count < param_count) {
+        /* Skip leading whitespace */
+        while (*token && (*token == ' ' || *token == '\t')) {
+            token++;
+        }
+
+        /* Find key=value */
+        char *eq_pos = strchr(token, '=');
+        if (!eq_pos) {
+            LOGW(TAG, "Malformed parameter, missing '=': %s", token);
+            free(param_copy);
+            free(param_array);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        /* Split key and value */
+        *eq_pos = '\0';
+        const char *key = token;
+        const char *value = eq_pos + 1;
+
+        /* Trim whitespace */
+        while (*value && (*value == ' ' || *value == '\t')) {
+            value++;
+        }
+
+        /* Validate parameter key and value */
+        if (!httpd_ws_is_valid_token(key)) {
+            LOGW(TAG, "Invalid parameter key: %s", key);
+            free(param_copy);
+            free(param_array);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        if (httpd_ws_validate_param_value(key, value) != ESP_OK) {
+            LOGW(TAG, "Parameter validation failed for %s=%s", key, value);
+            free(param_copy);
+            free(param_array);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        /* Handle quoted values (basic unquoting) - create a copy for unquoting since value may be in param_copy */
+        const char *original_value = value;
+        if (*value == '"') {
+            value++;
+            size_t len = strlen(value);
+            if (len > 0 && value[len - 1] == '"') {
+                ((char *)value)[len - 1] = '\0';
+            }
+        }
+
+        /* Duplicate strings */
+        param_array[parsed_count].key = strdup(key);
+        param_array[parsed_count].value = strdup(value);
+
+        if (!param_array[parsed_count].key || !param_array[parsed_count].value) {
+            LOGE(TAG, "Failed to allocate memory for parameter key/value");
+            free(param_copy);
+            free(param_array);
+            return ESP_ERR_NO_MEM;
+        }
+
+        parsed_count++;
+        token = strtok_r(NULL, ";", &saveptr);
+    }
+
+    free(param_copy);
+    *params = param_array;
+    *num_params = parsed_count;
+    return ESP_OK;
+}
+
+/**
+ * @brief Parse the Sec-WebSocket-Extensions header
+ *
+ * @param header The header value (e.g. "permessage-deflate; client_max_window_bits=15, x-compress")
+ * @param extensions Pointer to store parsed extensions array
+ * @param num_extensions Pointer to store number of extensions found
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG for malformed header, ESP_ERR_NO_MEM on allocation failure
+ */
+esp_err_t httpd_ws_parse_extensions(const char *header, ws_extension_t **extensions, size_t *num_extensions)
+{
+    if (!header || header[0] == '\0') {
+        *extensions = NULL;
+        *num_extensions = 0;
+        return ESP_OK;
+    }
+
+    /* Limit header size to prevent DoS attacks */
+    if (strlen(header) > 1024) {
+        LOGW(TAG, "Extension header too long");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Create a copy since strtok_r modifies the string */
+    char *header_copy = strdup(header);
+    if (!header_copy) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    /* Count extensions first */
+    size_t ext_count = 0;
+    char *temp = header_copy;
+    while (*temp) {
+        if (*temp == ',') {
+            ext_count++;
+        }
+        temp++;
+    }
+    ext_count++; /* Add one for the last extension */
+
+    /* Limit number of extensions */
+    if (ext_count > 10) {
+        LOGW(TAG, "Too many extensions requested: %"NEWLIB_NANO_COMPAT_FORMAT, NEWLIB_NANO_COMPAT_CAST(ext_count));
+        free(header_copy);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Allocate extensions array */
+    ws_extension_t *ext_array = (ws_extension_t *)malloc(ext_count * sizeof(ws_extension_t));
+    if (!ext_array) {
+        free(header_copy);
+        return ESP_ERR_NO_MEM;
+    }
+    memset(ext_array, 0, ext_count * sizeof(ws_extension_t));
+
+    /* Parse each extension */
+    char *saveptr = NULL;
+    char *token = strtok_r(header_copy, ",", &saveptr);
+    size_t parsed_count = 0;
+
+    while (token && parsed_count < ext_count) {
+        /* Skip leading whitespace */
+        while (*token && (*token == ' ' || *token == '\t')) {
+            token++;
+        }
+
+        /* Find extension name and parameters */
+        char *semicolon_pos = strchr(token, ';');
+        char *ext_name = token;
+
+        if (semicolon_pos) {
+            /* Has parameters */
+            *semicolon_pos = '\0';
+            const char *params_str = semicolon_pos + 1;
+
+            /* Parse parameters */
+            esp_err_t ret = httpd_ws_parse_extension_params(params_str, &ext_array[parsed_count].params, &ext_array[parsed_count].num_params);
+            if (ret != ESP_OK) {
+                LOGW(TAG, "Failed to parse extension parameters for: %s", ext_name);
+                free(header_copy);
+                httpd_ws_free_extensions(ext_array, parsed_count + 1);
+                return ret;
+            }
+        } else {
+            /* No parameters */
+            ext_array[parsed_count].params = NULL;
+            ext_array[parsed_count].num_params = 0;
+        }
+
+        /* Trim whitespace from name */
+        char *end = ext_name + strlen(ext_name) - 1;
+        while (end > ext_name && (*end == ' ' || *end == '\t')) {
+            *end = '\0';
+            end--;
+        }
+
+    /* Validate extension name (RFC 6455 token validation) */
+    if (strlen(ext_name) == 0 || strlen(ext_name) > 50 || !httpd_ws_is_valid_token(ext_name)) {
+        LOGW(TAG, "Invalid extension name: %s", ext_name);
+        free(header_copy);
+        httpd_ws_free_extensions(ext_array, parsed_count + 1);
+        *extensions = NULL;
+        *num_extensions = 0;
+        return ESP_ERR_INVALID_ARG;
+    }
+
+        /* Duplicate name */
+        ext_array[parsed_count].name = strdup(ext_name);
+        if (!ext_array[parsed_count].name) {
+            LOGE(TAG, "Failed to allocate memory for extension name");
+            free(header_copy);
+            httpd_ws_free_extensions(ext_array, parsed_count + 1);
+            return ESP_ERR_NO_MEM;
+        }
+
+        parsed_count++;
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+
+    free(header_copy);
+    *extensions = ext_array;
+    *num_extensions = parsed_count;
+    return ESP_OK;
+}
+
+/**
+ * @brief Free memory allocated for extension structures
+ */
+void httpd_ws_free_extensions(ws_extension_t *extensions, size_t num_extensions)
+{
+    if (!extensions) {
+        return;
+    }
+
+    for (size_t i = 0; i < num_extensions; i++) {
+        if (extensions[i].name) {
+            free(extensions[i].name);
+        }
+        if (extensions[i].params) {
+            for (size_t j = 0; j < extensions[i].num_params; j++) {
+                if (extensions[i].params[j].key) {
+                    free(extensions[i].params[j].key);
+                }
+                if (extensions[i].params[j].value) {
+                    free(extensions[i].params[j].value);
+                }
+            }
+            free(extensions[i].params);
+        }
+    }
+    free(extensions);
+}
+
+/**
+ * @brief Negotiate WebSocket extensions between client offers and server support
+ *
+ * @param client_extensions Array of extensions offered by client
+ * @param client_count Number of extensions in client array
+ * @param server_extensions Array of extensions supported by server
+ * @param server_count Number of extensions in server array
+ * @param negotiated Pointer to store negotiated extensions array
+ * @param negotiated_count Pointer to store count of negotiated extensions
+ * @return ESP_OK on success, ESP_ERR_NO_MEM on allocation failure
+ *
+ * @note Currently implements simple exact name matching. Future enhancement could negotiate parameters
+ */
+esp_err_t httpd_ws_negotiate_extensions(const ws_extension_t *client_extensions, size_t client_count,
+                                               const ws_extension_t *server_extensions, size_t server_count,
+                                               ws_extension_t **negotiated, size_t *negotiated_count)
+{
+    if (client_count == 0 || server_count == 0) {
+        *negotiated = NULL;
+        *negotiated_count = 0;
+        return ESP_OK;
+    }
+
+    /* Allocate array for potential negotiated extensions (worst case: all match) */
+    ws_extension_t *negotiated_exts = (ws_extension_t *)malloc(client_count * sizeof(ws_extension_t));
+    if (!negotiated_exts) {
+        return ESP_ERR_NO_MEM;
+    }
+    memset(negotiated_exts, 0, client_count * sizeof(ws_extension_t));
+
+    size_t neg_count = 0;
+
+    /* Find intersection of client offers and server support */
+    for (size_t cidx = 0; cidx < client_count; cidx++) {
+        const ws_extension_t *client_ext = &client_extensions[cidx];
+
+        for (size_t sidx = 0; sidx < server_count; sidx++) {
+            const ws_extension_t *server_ext = &server_extensions[sidx];
+
+            /* Simple exact name matching for negotiation */
+            if (strcmp(client_ext->name, server_ext->name) == 0) {
+                /* Copy the negotiated extension - use server parameters if present, otherwise client */
+                const ws_extension_t *chosen_ext = server_ext->num_params > 0 ? server_ext : client_ext;
+
+                /* Duplicate name */
+                negotiated_exts[neg_count].name = strdup(chosen_ext->name);
+                if (!negotiated_exts[neg_count].name) {
+                    LOGE(TAG, "Failed to allocate memory for negotiated extension name");
+                    httpd_ws_free_extensions(negotiated_exts, neg_count);
+                    return ESP_ERR_NO_MEM;
+                }
+
+                /* Duplicate parameters if present */
+                if (chosen_ext->num_params > 0) {
+                    negotiated_exts[neg_count].params = (extension_param_t *)malloc(chosen_ext->num_params * sizeof(extension_param_t));
+                    if (!negotiated_exts[neg_count].params) {
+                        LOGE(TAG, "Failed to allocate memory for negotiated extension parameters");
+                        free(negotiated_exts[neg_count].name);
+                        httpd_ws_free_extensions(negotiated_exts, neg_count);
+                        return ESP_ERR_NO_MEM;
+                    }
+
+                    for (size_t pidx = 0; pidx < chosen_ext->num_params; pidx++) {
+                        negotiated_exts[neg_count].params[pidx].key = strdup(chosen_ext->params[pidx].key);
+                        negotiated_exts[neg_count].params[pidx].value = strdup(chosen_ext->params[pidx].value);
+
+                        if (!negotiated_exts[neg_count].params[pidx].key || !negotiated_exts[neg_count].params[pidx].value) {
+                            LOGE(TAG, "Failed to allocate memory for negotiated parameter");
+                            httpd_ws_free_extensions(negotiated_exts, neg_count + 1);
+                            return ESP_ERR_NO_MEM;
+                        }
+                    }
+                    negotiated_exts[neg_count].num_params = chosen_ext->num_params;
+                } else {
+                    negotiated_exts[neg_count].params = NULL;
+                    negotiated_exts[neg_count].num_params = 0;
+                }
+
+                neg_count++;
+
+                LOGD(TAG, "Negotiated extension: %s", chosen_ext->name);
+                break; /* Move to next client extension */
+            }
+        }
+    }
+
+    *negotiated = negotiated_exts;
+    *negotiated_count = neg_count;
+
+    if (neg_count > 0) {
+        LOGD(TAG, "Negotiated %"NEWLIB_NANO_COMPAT_FORMAT" extension(s)", NEWLIB_NANO_COMPAT_CAST(neg_count));
+    } else {
+        LOGD(TAG, "No extensions negotiated");
+    }
+
+    return ESP_OK;
+}
+
+/**
+ * @brief Build Sec-WebSocket-Extensions header from negotiated extensions
+ *
+ * @param extensions Array of negotiated extensions
+ * @param count Number of extensions
+ * @return Header string or NULL if no extensions. Caller must free the returned string.
+ */
+char *httpd_ws_build_extension_header(const ws_extension_t *extensions, size_t count)
+{
+    if (count == 0) {
+        return NULL;
+    }
+
+    /* Calculate required buffer size */
+    size_t buf_size = 0;
+    for (size_t i = 0; i < count; i++) {
+        buf_size += strlen(extensions[i].name) + 2; /* +2 for comma/space or terminal characters */
+
+        for (size_t pidx = 0; pidx < extensions[i].num_params; pidx++) {
+            buf_size += strlen(extensions[i].params[pidx].key) + strlen(extensions[i].params[pidx].value) + 3; /* key=value; */
+        }
+
+        if (extensions[i].num_params > 0) {
+            buf_size += 3; /* Adjust for semicolon and spaces: "ext;param=value, " */
+        }
+    }
+
+    /* Limit header size to prevent excessively large responses */
+    if (buf_size > 512) {
+        LOGW(TAG, "Negotiated extension header too long (%zu), truncating", buf_size);
+        return NULL; /* Fail gracefully - better to not negotiate than to create huge headers */
+    }
+
+    char *header = (char *)malloc(buf_size);
+    if (!header) {
+        return NULL;
+    }
+
+    /* Build the header */
+    char *ptr = header;
+    size_t remaining = buf_size;
+
+    for (size_t i = 0; i < count; i++) {
+        int written = 0;
+
+        /* Extension name */
+        written = snprintf(ptr, remaining, "%s", extensions[i].name);
+        if (written < 0 || (size_t)written >= remaining) {
+            free(header);
+            return NULL;
+        }
+        ptr += written;
+        remaining -= written;
+
+        /* Parameters */
+        for (size_t pidx = 0; pidx < extensions[i].num_params; pidx++) {
+            if (pidx == 0) {
+                written = snprintf(ptr, remaining, ";%s=%s", extensions[i].params[pidx].key, extensions[i].params[pidx].value);
+            } else {
+                written = snprintf(ptr, remaining, ";%s=%s", extensions[i].params[pidx].key, extensions[i].params[pidx].value);
+            }
+            if (written < 0 || (size_t)written >= remaining) {
+                free(header);
+                return NULL;
+            }
+            ptr += written;
+            remaining -= written;
+        }
+
+        /* Add separator between extensions (except for last one) */
+        if (i < count - 1) {
+            written = snprintf(ptr, remaining, ", ");
+            if (written < 0 || (size_t)written >= remaining) {
+                free(header);
+                return NULL;
+            }
+            ptr += written;
+            remaining -= written;
+        }
+    }
+
+    return header;
+}
+
+esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *supported_subprotocol, const char *supported_extensions)
 {
     /* Probe if input parameters are valid or not */
     if (!req || !req->aux) {
@@ -160,6 +710,53 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
         LOGW(TAG, "Sec-WebSocket-Protocol length exceeded buffer size of %"NEWLIB_NANO_COMPAT_FORMAT", was trunctated", NEWLIB_NANO_COMPAT_CAST(sizeof(subprotocol)));
     }
 
+    /* Parse client extensions if present */
+    ws_extension_t *client_extensions = NULL;
+    size_t client_extensions_count = 0;
+    char client_ext_header[256] = { '\0' };
+    esp_err_t ext_parse_ret = ESP_OK;
+
+    if (httpd_req_get_hdr_value_str(req, "Sec-WebSocket-Extensions", client_ext_header, sizeof(client_ext_header)) == ESP_OK) {
+        ext_parse_ret = httpd_ws_parse_extensions(client_ext_header, &client_extensions, &client_extensions_count);
+        if (ext_parse_ret != ESP_OK) {
+            LOGW(TAG, "Failed to parse client WebSocket extensions: %s", client_ext_header);
+            /* Continue handshake - malformed extensions should not fail the connection per RFC */
+        }
+    }
+
+    /* Parse server supported extensions if any */
+    ws_extension_t *server_extensions = NULL;
+    size_t server_extensions_count = 0;
+    if (supported_extensions && strlen(supported_extensions) > 0) {
+        ext_parse_ret = httpd_ws_parse_extensions(supported_extensions, &server_extensions, &server_extensions_count);
+        if (ext_parse_ret != ESP_OK) {
+            LOGW(TAG, "Failed to parse server supported extensions: %s", supported_extensions);
+            /* Continue - this is a server configuration error, but handshake should proceed */
+        }
+    }
+
+    /* Negotiate extensions */
+    ws_extension_t *negotiated_extensions = NULL;
+    size_t negotiated_count = 0;
+    if (client_extensions_count > 0 && server_extensions_count > 0) {
+        ext_parse_ret = httpd_ws_negotiate_extensions(client_extensions, client_extensions_count,
+                                                     server_extensions, server_extensions_count,
+                                                     &negotiated_extensions, &negotiated_count);
+        if (ext_parse_ret != ESP_OK) {
+            LOGW(TAG, "Extension negotiation failed, proceeding without extensions");
+        }
+    }
+
+    /* Build extension response header */
+    char *extension_header = NULL;
+    if (negotiated_count > 0) {
+        extension_header = httpd_ws_build_extension_header(negotiated_extensions, negotiated_count);
+        if (!extension_header) {
+            LOGW(TAG, "Failed to build extension response header, proceeding without extensions");
+            negotiated_count = 0; /* Don't include extensions header */
+        }
+    }
+
 
     /* Prepare the Switching Protocol response */
     char tx_buf[192] = { '\0' };
@@ -171,6 +768,11 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
 
     if (fmt_len < 0 || fmt_len > sizeof(tx_buf)) {
         LOGW(TAG, LOG_FMT("Failed to prepare Tx buffer"));
+        /* Cleanup allocated memory */
+        httpd_ws_free_extensions(client_extensions, client_extensions_count);
+        httpd_ws_free_extensions(server_extensions, server_extensions_count);
+        httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+        free(extension_header);
         return ESP_FAIL;
     }
 
@@ -180,6 +782,11 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
         if (r <= 0) {
             LOGE(TAG, "Error in response generation"
                           "(snprintf of subprotocol returned %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+            /* Cleanup allocated memory */
+            httpd_ws_free_extensions(client_extensions, client_extensions_count);
+            httpd_ws_free_extensions(server_extensions, server_extensions_count);
+            httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+            free(extension_header);
             return ESP_FAIL;
         }
 
@@ -188,6 +795,40 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
         if (fmt_len >= sizeof(tx_buf)) {
             LOGE(TAG, "Error in response generation"
                           "(snprintf of subprotocol returned %d, desired response len: %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, fmt_len, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+            /* Cleanup allocated memory */
+            httpd_ws_free_extensions(client_extensions, client_extensions_count);
+            httpd_ws_free_extensions(server_extensions, server_extensions_count);
+            httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+            free(extension_header);
+            return ESP_FAIL;
+        }
+    }
+
+    /* Add negotiated extensions header if any */
+    if (extension_header && strlen(extension_header) > 0) {
+        LOGD(TAG, "Including negotiated extensions in response: %s", extension_header);
+        int r = snprintf(tx_buf + fmt_len, sizeof(tx_buf) - fmt_len, "Sec-WebSocket-Extensions: %s\r\n", extension_header);
+        if (r <= 0) {
+            LOGE(TAG, "Error in response generation"
+                          "(snprintf of extensions returned %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+            /* Cleanup allocated memory */
+            httpd_ws_free_extensions(client_extensions, client_extensions_count);
+            httpd_ws_free_extensions(server_extensions, server_extensions_count);
+            httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+            free(extension_header);
+            return ESP_FAIL;
+        }
+
+        fmt_len += r;
+
+        if (fmt_len >= sizeof(tx_buf)) {
+            LOGE(TAG, "Error in response generation"
+                          "(snprintf of extensions returned %d, desired response len: %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, fmt_len, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+            /* Cleanup allocated memory */
+            httpd_ws_free_extensions(client_extensions, client_extensions_count);
+            httpd_ws_free_extensions(server_extensions, server_extensions_count);
+            httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+            free(extension_header);
             return ESP_FAIL;
         }
     }
@@ -195,15 +836,31 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
     int r = snprintf(tx_buf + fmt_len, sizeof(tx_buf) - fmt_len, "\r\n");
     if (r <= 0) {
         LOGE(TAG, "Error in response generation"
-                        "(snprintf of subprotocol returned %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+                        "(snprintf of header terminal returned %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+        /* Cleanup allocated memory */
+        httpd_ws_free_extensions(client_extensions, client_extensions_count);
+        httpd_ws_free_extensions(server_extensions, server_extensions_count);
+        httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+        free(extension_header);
         return ESP_FAIL;
     }
     fmt_len += r;
     if (fmt_len >= sizeof(tx_buf)) {
         LOGE(TAG, "Error in response generation"
                        "(snprintf of header terminal returned %d, desired response len: %d, buffer size: %"NEWLIB_NANO_COMPAT_FORMAT, r, fmt_len, NEWLIB_NANO_COMPAT_CAST(sizeof(tx_buf)));
+        /* Cleanup allocated memory */
+        httpd_ws_free_extensions(client_extensions, client_extensions_count);
+        httpd_ws_free_extensions(server_extensions, server_extensions_count);
+        httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+        free(extension_header);
         return ESP_FAIL;
     }
+
+    /* Cleanup allocated memory before sending response */
+    httpd_ws_free_extensions(client_extensions, client_extensions_count);
+    httpd_ws_free_extensions(server_extensions, server_extensions_count);
+    httpd_ws_free_extensions(negotiated_extensions, negotiated_count);
+    free(extension_header);
 
     /* Send off the response */
     if (httpd_send(req, tx_buf, fmt_len) < 0) {

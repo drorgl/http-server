@@ -121,7 +121,7 @@ esp_err_t httpd_generate_strong_etag(const char *content, size_t content_len, ch
 }
 
 esp_err_t httpd_generate_weak_etag(long long timestamp, char *etag, size_t etag_len) {
-    if (!etag || etag_len < 20) {
+    if (!etag || etag_len < 30) {
         return ESP_ERR_INVALID_ARG;
     }
     
@@ -226,25 +226,29 @@ static esp_err_t parse_etag_list(const char *header_value, char etags[][HTTPD_MA
             // Copy ETag, trimming whitespace
             const char *etag_start = start;
             const char *etag_end = start + len - 1;
-            
+
             // Trim leading whitespace
             while (etag_start <= etag_end && isspace(*etag_start)) etag_start++;
-            
+
             // Trim trailing whitespace
             while (etag_end > etag_start && isspace(*etag_end)) etag_end--;
-            
+
+            if (etag_start > etag_end) {
+                // Skip empty ETags after trimming
+                continue;
+            }
+
             size_t etag_len = etag_end - etag_start + 1;
-            if (etag_len > 0 && etag_len < HTTPD_MAX_ETAG_LEN) {
+            if (etag_len > 0 && etag_len + 1 <= HTTPD_MAX_ETAG_LEN && *etag_count < max_etags) {
                 memcpy(etags[*etag_count], etag_start, etag_len);
-                etags[*etag_count][etag_len] = '\0';
+                etags[*etag_count][etag_len] = '\0';  // Null-terminate the copied string
                 (*etag_count)++;
             }
         }
-        
         // Skip comma
         if (*ptr == ',') ptr++;
     }
-    
+
     return ESP_OK;
 }
 
@@ -406,9 +410,12 @@ esp_err_t middleware_conditional(httpd_req_t *req, const httpd_uri_t *uri, void 
     // Get ETag for the resource if generator is provided
     char resource_etag[HTTPD_MAX_ETAG_LEN] = {0};
     bool has_etag = false;
-    
-    if (config->etag_generator) {
+
+    // Validate buffer size before calling generator
+    if (config->etag_generator && sizeof(resource_etag) > 10) {
         if (config->etag_generator(req, resource_etag, sizeof(resource_etag)) == ESP_OK) {
+            // Ensure null termination
+            resource_etag[HTTPD_MAX_ETAG_LEN - 1] = '\0';
             has_etag = true;
         }
     }
@@ -430,17 +437,29 @@ esp_err_t middleware_conditional(httpd_req_t *req, const httpd_uri_t *uri, void 
 
     // Use test header if set, otherwise get from request
     if (strlen(test_if_range_header) > 0) {
-        strncpy(if_range_value, test_if_range_header, sizeof(if_range_value) - 1);
-        if_range_value[sizeof(if_range_value) - 1] = '\0';
-        has_if_range = true;
-    } else if (config->req_get_hdr_value_len ?
-               config->req_get_hdr_value_len(req, "If-Range") > 0 :
-               httpd_req_get_hdr_value_len(req, "If-Range") > 0) {
-        esp_err_t ret = config->req_get_hdr_value_str ?
-                        config->req_get_hdr_value_str(req, "If-Range", if_range_value, sizeof(if_range_value)) :
-                        httpd_req_get_hdr_value_str(req, "If-Range", if_range_value, sizeof(if_range_value));
-        if (ret == ESP_OK) {
+        // Validate test header length doesn't exceed buffer
+        size_t test_len = strlen(test_if_range_header);
+        if (test_len < sizeof(if_range_value)) {
+            strncpy(if_range_value, test_if_range_header, sizeof(if_range_value) - 1);
+            if_range_value[sizeof(if_range_value) - 1] = '\0';
             has_if_range = true;
+        } else {
+            LOGW(TAG, "If-Range test header too long: %zu >= %zu", test_len, sizeof(if_range_value));
+        }
+    } else {
+        // Get header length for bounds checking
+        size_t hdr_len = config->req_get_hdr_value_len ?
+                        config->req_get_hdr_value_len(req, "If-Range") :
+                        httpd_req_get_hdr_value_len(req, "If-Range");
+        if (hdr_len > 0 && hdr_len < sizeof(if_range_value)) {
+            esp_err_t ret = config->req_get_hdr_value_str ?
+                            config->req_get_hdr_value_str(req, "If-Range", if_range_value, sizeof(if_range_value)) :
+                            httpd_req_get_hdr_value_str(req, "If-Range", if_range_value, sizeof(if_range_value));
+            if (ret == ESP_OK) {
+                has_if_range = true;
+            }
+        } else if (hdr_len >= sizeof(if_range_value)) {
+            LOGW(TAG, "If-Range header too long: %zu >= %zu, ignoring", hdr_len, sizeof(if_range_value));
         }
     }
 
@@ -465,20 +484,32 @@ esp_err_t middleware_conditional(httpd_req_t *req, const httpd_uri_t *uri, void 
     // Check If-Match header
     char if_match_value[256] = {0};
     bool has_if_match = false;
-    
+
     // Use test header if set, otherwise get from request
     if (strlen(test_if_match_header) > 0) {
-        strncpy(if_match_value, test_if_match_header, sizeof(if_match_value) - 1);
-        if_match_value[sizeof(if_match_value) - 1] = '\0';
-        has_if_match = true;
-    } else if (config->req_get_hdr_value_len ? 
-               config->req_get_hdr_value_len(req, "If-Match") > 0 :
-               httpd_req_get_hdr_value_len(req, "If-Match") > 0) {
-        esp_err_t ret = config->req_get_hdr_value_str ?
-                        config->req_get_hdr_value_str(req, "If-Match", if_match_value, sizeof(if_match_value)) :
-                        httpd_req_get_hdr_value_str(req, "If-Match", if_match_value, sizeof(if_match_value));
-        if (ret == ESP_OK) {
+        // Validate test header length doesn't exceed buffer
+        size_t test_len = strlen(test_if_match_header);
+        if (test_len < sizeof(if_match_value)) {
+            strncpy(if_match_value, test_if_match_header, sizeof(if_match_value) - 1);
+            if_match_value[sizeof(if_match_value) - 1] = '\0';
             has_if_match = true;
+        } else {
+            LOGW(TAG, "If-Match test header too long: %zu >= %zu", test_len, sizeof(if_match_value));
+        }
+    } else {
+        // Get header length for bounds checking
+        size_t hdr_len = config->req_get_hdr_value_len ?
+                        config->req_get_hdr_value_len(req, "If-Match") :
+                        httpd_req_get_hdr_value_len(req, "If-Match");
+        if (hdr_len > 0 && hdr_len < sizeof(if_match_value)) {
+            esp_err_t ret = config->req_get_hdr_value_str ?
+                            config->req_get_hdr_value_str(req, "If-Match", if_match_value, sizeof(if_match_value)) :
+                            httpd_req_get_hdr_value_str(req, "If-Match", if_match_value, sizeof(if_match_value));
+            if (ret == ESP_OK) {
+                has_if_match = true;
+            }
+        } else if (hdr_len >= sizeof(if_match_value)) {
+            LOGW(TAG, "If-Match header too long: %zu >= %zu, ignoring", hdr_len, sizeof(if_match_value));
         }
     }
     

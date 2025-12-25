@@ -545,6 +545,65 @@ void httpd_resp_hdrs_free(struct httpd_req_aux *ra);
  * @{
  */
 
+/**
+ * @brief WebSocket extension parameter structure
+ */
+typedef struct extension_param {
+    char *key;           /*!< Parameter key */
+    char *value;         /*!< Parameter value */
+} extension_param_t;
+
+/**
+ * @brief WebSocket extension structure
+ */
+typedef struct ws_extension {
+    char *name;                    /*!< Extension name */
+    extension_param_t *params;     /*!< Parameter array */
+    size_t num_params;             /*!< Number of parameters */
+} ws_extension_t;
+
+/**
+ * @brief Parse WebSocket extensions from Sec-WebSocket-Extensions header
+ *
+ * @param header The header value string
+ * @param extensions Pointer to store parsed extensions array
+ * @param num_extensions Pointer to store number of parsed extensions
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG on malformed header, ESP_ERR_NO_MEM on allocation failure
+ */
+esp_err_t httpd_ws_parse_extensions(const char *header, ws_extension_t **extensions, size_t *num_extensions);
+
+/**
+ * @brief Negotiate WebSocket extensions between client and server support
+ *
+ * @param client_extensions Array of extensions offered by client
+ * @param client_count Number of client extensions
+ * @param server_extensions Array of extensions supported by server
+ * @param server_count Number of server extensions
+ * @param negotiated Pointer to store negotiated extensions
+ * @param negotiated_count Pointer to store count of negotiated extensions
+ * @return ESP_OK on success, ESP_ERR_NO_MEM on allocation failure
+ */
+esp_err_t httpd_ws_negotiate_extensions(const ws_extension_t *client_extensions, size_t client_count,
+                                       const ws_extension_t *server_extensions, size_t server_count,
+                                       ws_extension_t **negotiated, size_t *negotiated_count);
+
+/**
+ * @brief Build Sec-WebSocket-Extensions response header from negotiated extensions
+ *
+ * @param extensions Array of negotiated extensions
+ * @param count Number of extensions
+ * @return Allocated header string (caller must free) or NULL on failure
+ */
+char *httpd_ws_build_extension_header(const ws_extension_t *extensions, size_t count);
+
+/**
+ * @brief Free memory allocated for extension structures
+ *
+ * @param extensions Array of extensions to free
+ * @param num_extensions Number of extensions in array
+ */
+void httpd_ws_free_extensions(ws_extension_t *extensions, size_t num_extensions);
+
 
 /**
  * @brief   This function is for responding a WebSocket handshake
@@ -559,7 +618,7 @@ void httpd_resp_hdrs_free(struct httpd_req_aux *ra);
  *  - ESP_ERR_INVALID_ARG           : Argument is invalid (null or non-WebSocket)
  *  - ESP_FAIL                      : Socket failures
  */
-esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *supported_subprotocol);
+esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *supported_subprotocol, const char *supported_extensions);
 
 /**
  * @brief   This function is for getting a frame type

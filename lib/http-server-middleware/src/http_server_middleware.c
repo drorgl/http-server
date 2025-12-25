@@ -3,6 +3,9 @@
 #include <string.h>
 
 #include "../include/http_server_middleware.h"
+#include <log.h>
+
+static const char *TAG = "middleware_wrapper";
 
 /**
  * @brief Default URI matching function when uri_match_wildcard is NULL
@@ -27,6 +30,14 @@ typedef struct wrapped_handler_ctx {
  */
 static esp_err_t wrapped_handler(httpd_req_t *req)
 {
+    // GUARD RAIL: Add basic request validation to detect corruption
+    // Added in response to Range middleware issues where request structure
+    // may be corrupted by previous operations
+    if (!req || !req->uri || strlen(req->uri) == 0) {
+        LOGE(TAG, "Wrapped handler: Invalid request structure detected");
+        return ESP_FAIL;
+    }
+
     // Get our context from the user_ctx
     wrapped_handler_ctx_t *ctx = (wrapped_handler_ctx_t *)req->user_ctx;
 
@@ -70,7 +81,7 @@ static esp_err_t wrapped_handler(httpd_req_t *req)
 /**
  * @brief Free function for wrapped handler context
  */
-static void free_wrapped_ctx(void *ctx)
+void httpd_free_wrapped_ctx(void *ctx)
 {
     wrapped_handler_ctx_t *wrapped_ctx = (wrapped_handler_ctx_t *)ctx;
 
@@ -94,6 +105,18 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
                                            size_t num_configs)
 {
     if (original_uri == NULL || configs == NULL || num_configs == 0) {
+        return NULL;
+    }
+
+    // Validate original URI field
+    if (original_uri->uri == NULL) {
+        fprintf(stderr, "httpd_uri_wrap_with_middleware: original_uri->uri is NULL\n");
+        return NULL;
+    }
+
+    size_t uri_len = strlen(original_uri->uri);
+    if (uri_len == 0 || uri_len > 1024) {
+        fprintf(stderr, "httpd_uri_wrap_with_middleware: invalid URI length (%zu)\n", uri_len);
         return NULL;
     }
 
@@ -141,10 +164,13 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
     httpd_uri_t *wrapped_uri = (httpd_uri_t *)malloc(sizeof(httpd_uri_t));
     if (wrapped_uri == NULL) {
         fprintf(stderr, "httpd_uri_wrap_with_middleware: Failed to allocate wrapped_uri_t\\n");
-        free(ctx->configs);
-        free(ctx);
+        // Use our cleanup function for context
+        httpd_free_wrapped_ctx(ctx);
         return NULL;
     }
+
+    // Zero-initialize to prevent garbage values in unmapped fields
+    memset(wrapped_uri, 0, sizeof(httpd_uri_t));
 
     // Copy original URI fields
     wrapped_uri->uri = original_uri->uri;  // Assume managed by caller
@@ -155,8 +181,19 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     wrapped_uri->is_websocket = original_uri->is_websocket;
     wrapped_uri->handle_ws_control_frames = original_uri->handle_ws_control_frames;
-    wrapped_uri->supported_subprotocol = original_uri->supported_subprotocol;
+    
+    // Deep copy WebSocket strings if they exist to manage lifecycle safely
+    if (original_uri->supported_subprotocol) {
+        wrapped_uri->supported_subprotocol = strdup(original_uri->supported_subprotocol);
+    }
+    if (original_uri->supported_extensions) {
+        wrapped_uri->supported_extensions = strdup(original_uri->supported_extensions);
+    }
 #endif
 
     return wrapped_uri;
+}
+
+bool httpd_is_wrapped_handler(const httpd_uri_t *uri) {
+    return uri && uri->handler == wrapped_handler;
 }

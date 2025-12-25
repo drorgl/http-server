@@ -42,7 +42,7 @@ static esp_err_t async_request_handler(httpd_req_t *req)
     httpd_req_t *async_req;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_req_async_handler_begin(req, &async_req));
     othread_t thread;
-    httpd_os_thread_create(&thread, "async_response_task", 4096, 5, async_response_task, async_req, 0, 0);
+    httpd_os_thread_create(&thread, "async_response_task", 8196, 5, async_response_task, async_req, 0, 0);
     return ESP_OK;
 }
 

@@ -398,6 +398,14 @@ typedef struct httpd_req {
     void *user_ctx;
 
     /**
+     * GUARD RAIL: Flag indicating if response has been sent
+     * Prevents double response sending which causes HTTP stream corruption
+     * Added in response to Range middleware double-send bug
+     * See: test_e2e_range_valid_open_ended_range failure in normal execution
+     */
+    bool response_sent;
+
+    /**
      * Session Context Pointer
      *
      * A session context. Contexts are maintained across 'sessions' for a
@@ -473,6 +481,39 @@ typedef struct httpd_uri {
      * Pointer to subprotocol supported by URI
      */
     const char *supported_subprotocol;
+
+    /**
+     * @brief Comma-separated list of supported WebSocket extensions
+     *
+     * This field specifies which WebSocket extensions the server supports for negotiation
+     * during the WebSocket handshake. Extensions allow enhancement of the WebSocket protocol
+     * functionality beyond the base specification.
+     *
+     * The extensions are specified as a comma-separated list (e.g., "permessage-deflate,compress").
+     * During the handshake, the server will negotiate extensions by finding the intersection
+     * between client-offered and server-supported extensions. If no common extensions are found,
+     * the handshake completes without extensions.
+     *
+     * Currently supported extensions:
+     * - Simple name matching negotiation (basis for any extension)
+     * - Future extensions can be added by implementing specific negotiation logic
+     *
+     * Example:
+     * @code{c}
+     * httpd_uri_t ws_uri = {
+     *     .uri      = "/ws",
+     *     .method   = HTTP_GET,
+     *     .handler  = ws_handler,
+     *     .user_ctx = NULL,
+     *     .is_websocket = true,
+     *     .supported_extensions = "permessage-deflate"  // Server supports deflate extension
+     * };
+     * @endcode
+     *
+     * @note Set to NULL or empty string to disable extension negotiation (default behavior).
+     * @note Extension negotiation follows RFC 6455 Section 9 specifications.
+     */
+    const char *supported_extensions;
 #endif
 } httpd_uri_t;
 

@@ -714,6 +714,7 @@ static void init_req(httpd_req_t *r, httpd_config_t *config)
     r->sess_ctx = 0;
     r->free_ctx = 0;
     r->ignore_sess_ctx_changes = 0;
+    r->response_sent = false;  /* GUARD RAIL: Initialize response tracking */
 }
 
 static void init_req_aux(struct httpd_req_aux *ra, httpd_config_t *config)

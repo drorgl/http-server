@@ -150,6 +150,30 @@ http_test_client_err_t ws_test_client_handshake(http_test_client_handle_t *clien
                                                 uint32_t timeout_ms);
 
 /**
+ * @brief Performs a WebSocket upgrade handshake with extension support.
+ * @param client_handle The client handle.
+ * @param uri The WebSocket URI (e.g., "/ws").
+ * @param host The host for the Host header.
+ * @param client_key The Sec-WebSocket-Key to send.
+ * @param expected_accept_key The expected Sec-WebSocket-Accept key from the server.
+ * @param offered_extensions Comma-separated list of extensions offered by client (e.g., "permessage-deflate, compress").
+ *                           Pass NULL for no extensions.
+ * @param negotiated_extensions Pointer to store the comma-separated negotiated extensions from server response.
+ *                              Memory is allocated by the function and must be freed by caller.
+ *                              Set to NULL if no extensions were negotiated.
+ * @param timeout_ms Timeout for the handshake.
+ * @return HTTP_TEST_CLIENT_OK on success, or an error code.
+ */
+http_test_client_err_t ws_test_client_handshake_with_extensions(http_test_client_handle_t *client_handle,
+                                                                const char *uri,
+                                                                const char *host,
+                                                                const char *client_key,
+                                                                const char *expected_accept_key,
+                                                                const char *offered_extensions,
+                                                                char **negotiated_extensions,
+                                                                uint32_t timeout_ms);
+
+/**
  * @brief Sends a WebSocket data frame.
  * @param client_handle The client handle.
  * @param frame The WebSocket frame to send. The payload should be unmasked.

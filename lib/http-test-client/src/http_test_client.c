@@ -550,6 +550,97 @@ http_test_client_err_t ws_test_client_handshake(http_test_client_handle_t *clien
     return HTTP_TEST_CLIENT_OK;
 }
 
+http_test_client_err_t ws_test_client_handshake_with_extensions(http_test_client_handle_t *client_handle,
+                                                                const char *uri,
+                                                                const char *host,
+                                                                const char *client_key,
+                                                                const char *expected_accept_key,
+                                                                const char *offered_extensions,
+                                                                char **negotiated_extensions,
+                                                                uint32_t timeout_ms) {
+    if (client_handle == NULL || uri == NULL || host == NULL || client_key == NULL ||
+        expected_accept_key == NULL || negotiated_extensions == NULL) {
+        return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
+    }
+    if (client_handle->sockfd == -1) {
+        return HTTP_TEST_CLIENT_ERR_CONNECT; // Not connected
+    }
+
+    // Initialize negotiated_extensions to NULL
+    *negotiated_extensions = NULL;
+
+    // Build headers string
+    char headers_str[1024]; // Increased buffer size to accommodate extensions
+    int written = snprintf(headers_str, sizeof(headers_str),
+                           "Host: %s\r\n"
+                           "Upgrade: websocket\r\n"
+                           "Connection: Upgrade\r\n"
+                           "Sec-WebSocket-Key: %s\r\n"
+                           "Sec-WebSocket-Version: 13\r\n",
+                           host, client_key);
+
+    if (offered_extensions && strlen(offered_extensions) > 0) {
+        int remaining = sizeof(headers_str) - written;
+        if (remaining > 0) {
+            int ext_written = snprintf(headers_str + written, remaining,
+                                       "Sec-WebSocket-Extensions: %s\r\n",
+                                       offered_extensions);
+            if (ext_written < 0 || ext_written >= remaining) {
+                return HTTP_TEST_CLIENT_ERR_BUFFER_TOO_SMALL; // Header too long
+            }
+            written += ext_written;
+        } else {
+            return HTTP_TEST_CLIENT_ERR_BUFFER_TOO_SMALL;
+        }
+    }
+
+    http_test_response_t response;
+    http_test_client_err_t err = http_test_client_send_request(client_handle,
+                                                               HTTP_METHOD_GET,
+                                                               uri,
+                                                               headers_str,
+                                                               NULL, 0,
+                                                               &response,
+                                                               timeout_ms);
+    if (err != HTTP_TEST_CLIENT_OK) {
+        http_test_client_free_response(&response);
+        return err;
+    }
+
+    if (response.status_code != 101) {
+        http_test_client_free_response(&response);
+        return HTTP_TEST_CLIENT_ERR_PROTOCOL; // Not 101 Switching Protocols
+    }
+
+    // Verify Sec-WebSocket-Accept header
+    const char *received_accept_key_dyn = http_test_client_get_header(&response, "Sec-WebSocket-Accept");
+    if (!received_accept_key_dyn) {
+        http_test_client_free_response(&response);
+        return HTTP_TEST_CLIENT_ERR_PROTOCOL; // Missing Sec-WebSocket-Accept
+    }
+
+    if (strcmp(received_accept_key_dyn, expected_accept_key) != 0) {
+        free((void*)received_accept_key_dyn);
+        http_test_client_free_response(&response);
+        return HTTP_TEST_CLIENT_ERR_PROTOCOL; // Mismatched Sec-WebSocket-Accept
+    }
+    free((void*)received_accept_key_dyn);
+
+    // Extract negotiated extensions if present
+    const char *negotiated_ext_header = http_test_client_get_header(&response, "Sec-WebSocket-Extensions");
+    if (negotiated_ext_header) {
+        *negotiated_extensions = strdup(negotiated_ext_header);
+        if (!*negotiated_extensions) {
+            http_test_client_free_response(&response);
+            return HTTP_TEST_CLIENT_ERR_GENERIC; // Memory allocation failed
+        }
+        free((void*)negotiated_ext_header);
+    }
+
+    http_test_client_free_response(&response);
+    return HTTP_TEST_CLIENT_OK;
+}
+
 http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *client_handle,
                                                  const ws_test_frame_t *frame,
                                                  uint32_t timeout_ms) {

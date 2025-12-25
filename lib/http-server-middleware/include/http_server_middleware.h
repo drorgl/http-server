@@ -74,6 +74,21 @@ httpd_uri_t* httpd_uri_wrap_with_middleware(const httpd_uri_t *original_uri,
                                            const httpd_middleware_config_t *configs,
                                            size_t num_configs);
 
+/**
+ * @brief Check if a URI handler is wrapped with middleware
+ *
+ * @param uri URI handler to check
+ * @return true if wrapped, false otherwise
+ */
+bool httpd_is_wrapped_handler(const httpd_uri_t *uri);
+
+/**
+ * @brief Free context for wrapped handlers
+ *
+ * @param ctx Context to free (should be from wrapped handler)
+ */
+void httpd_free_wrapped_ctx(void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

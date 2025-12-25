@@ -14,11 +14,14 @@
 #include <log.h>
 #include "esp_httpd_priv.h"
 #include "http_server.h"
+#include <http_server_middleware.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <malloc.h>
 
 static const char *TAG = "httpd_uri";
+
+#define MAX_URI_LEN 1024  // Maximum URI length for safety
 
 static bool httpd_uri_match_simple(const char *uri1, const char *uri2, size_t len2)
 {
@@ -100,7 +103,7 @@ static httpd_uri_t* httpd_find_uri_handler(struct httpd_data *hd,
         if (!hd->hd_calls[i]) {
             break;
         }
-        LOGD(TAG, LOG_FMT("[%d] = %s"), i, hd->hd_calls[i]->uri);
+        LOGD(TAG, "[%d] = %s", i, hd->hd_calls[i]->uri);
 
         /* Check if custom URI matching function is set,
          * else use simple string compare */
@@ -137,6 +140,23 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
 
     struct httpd_data *hd = (struct httpd_data *) handle;
 
+    /* Early validation of URI field to prevent crashes */
+    if (uri_handler->uri == NULL) {
+        LOGE(TAG, "URI handler registration failed: uri field is NULL. Handler method: %d, handler addr: %p",
+             uri_handler->method, uri_handler->handler);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Additional validation for URI safety */
+    size_t uri_len = strlen(uri_handler->uri);
+    if (uri_len == 0 || uri_len > MAX_URI_LEN) {
+        LOGE(TAG, "URI handler registration failed: invalid URI length %zu (max %d)", uri_len, MAX_URI_LEN);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    LOGD(TAG, "Registering URI handler: uri=%s (len=%zu), method=%d, handler=%p",
+         uri_handler->uri, uri_len, uri_handler->method, uri_handler->handler);
+
     /* Make sure another handler with matching URI and method
      * is not already registered. This will also catch cases
      * when a registered URI wildcard pattern already accounts
@@ -144,8 +164,7 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
     if (httpd_find_uri_handler(handle, uri_handler->uri,
                                strlen(uri_handler->uri),
                                uri_handler->method, NULL) != NULL) {
-        LOGW(TAG, LOG_FMT("handler %s with method %d already registered"),
-                 uri_handler->uri, uri_handler->method);
+        LOGW(TAG, "handler %s with method %d already registered", uri_handler->uri, uri_handler->method);
         return ESP_ERR_HTTPD_HANDLER_EXISTS;
     }
 
@@ -159,7 +178,17 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
             }
             ESP_COMPILER_DIAGNOSTIC_POP("-Wanalyzer-malloc-leak")
 
+            // Guard: Zero-initialize the allocated call structure to ensure clean slate
+            memset(hd->hd_calls[i], 0, sizeof(httpd_uri_t));
+
             /* Copy URI string */
+            if (uri_handler->uri == NULL) {
+                /* Invalid URI - log detailed error information */
+                LOGE(TAG, "URI handler registration failed: uri field is NULL. Handler method: %d, handler addr: %p",
+                     uri_handler->method, uri_handler->handler);
+                free(hd->hd_calls[i]);
+                return ESP_ERR_INVALID_ARG;
+            }
             hd->hd_calls[i]->uri = strdup(uri_handler->uri);
             if (hd->hd_calls[i]->uri == NULL) {
                 /* Failed to allocate memory */
@@ -174,10 +203,18 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
 #ifdef CONFIG_HTTPD_WS_SUPPORT
             hd->hd_calls[i]->is_websocket = uri_handler->is_websocket;
             hd->hd_calls[i]->handle_ws_control_frames = uri_handler->handle_ws_control_frames;
-            if (uri_handler->supported_subprotocol) {
+            
+            // Guard: Add check for valid pointer range/garbage before strdup
+            if (uri_handler->supported_subprotocol && (uintptr_t)uri_handler->supported_subprotocol > 0x1000) {
                 hd->hd_calls[i]->supported_subprotocol = strdup(uri_handler->supported_subprotocol);
             } else {
                 hd->hd_calls[i]->supported_subprotocol = NULL;
+            }
+            
+            if (uri_handler->supported_extensions && (uintptr_t)uri_handler->supported_extensions > 0x1000) {
+                hd->hd_calls[i]->supported_extensions = strdup(uri_handler->supported_extensions);
+            } else {
+                hd->hd_calls[i]->supported_extensions = NULL;
             }
 #endif
             LOGD(TAG, LOG_FMT("[%d] installed %s"), i, uri_handler->uri);
@@ -204,6 +241,11 @@ esp_err_t httpd_unregister_uri_handler(httpd_handle_t handle,
         if ((hd->hd_calls[i]->method == method) &&       // First match methods
             (strcmp(hd->hd_calls[i]->uri, uri) == 0)) {  // Then match URI string
             LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
+
+            // Clean up wrapped handler context if this is a wrapped handler
+            if (httpd_is_wrapped_handler(hd->hd_calls[i])) {
+                httpd_free_wrapped_ctx(hd->hd_calls[i]->user_ctx);
+            }
 
             free((char*)hd->hd_calls[i]->uri);
             free(hd->hd_calls[i]);
@@ -243,6 +285,11 @@ esp_err_t httpd_unregister_uri(httpd_handle_t handle, const char *uri)
         if (strcmp(hd->hd_calls[i]->uri, uri) == 0) {   // Match URI strings
             LOGD(TAG, LOG_FMT("[%d] removing %s"), i, uri);
 
+            // Clean up wrapped handler context if this is a wrapped handler
+            if (httpd_is_wrapped_handler(hd->hd_calls[i])) {
+                httpd_free_wrapped_ctx(hd->hd_calls[i]->user_ctx);
+            }
+
             free((char*)hd->hd_calls[i]->uri);
             free(hd->hd_calls[i]);
             hd->hd_calls[i] = NULL;
@@ -273,6 +320,11 @@ void httpd_unregister_all_uri_handlers(struct httpd_data *hd)
             continue;
         }
         LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
+
+        // Clean up wrapped handler context if this is a wrapped handler
+        if (httpd_is_wrapped_handler(hd->hd_calls[i])) {
+            httpd_free_wrapped_ctx(hd->hd_calls[i]->user_ctx);
+        }
 
         free((char*)hd->hd_calls[i]->uri);
         free(hd->hd_calls[i]);
@@ -320,7 +372,7 @@ esp_err_t httpd_uri(struct httpd_data *hd)
     struct httpd_req_aux   *aux = req->aux;
     if (uri->is_websocket && aux->ws_handshake_detect && uri->method == HTTP_GET) {
         LOGD(TAG, LOG_FMT("Responding WS handshake to sock %d"), aux->sd->fd);
-        esp_err_t ret = httpd_ws_respond_server_handshake(&hd->hd_req, uri->supported_subprotocol);
+        esp_err_t ret = httpd_ws_respond_server_handshake(&hd->hd_req, uri->supported_subprotocol, uri->supported_extensions);
         if (ret != ESP_OK) {
             return ret;
         }

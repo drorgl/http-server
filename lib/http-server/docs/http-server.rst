@@ -66,7 +66,9 @@ WebSocket Server
 
 The HTTP server component provides WebSocket support. The WebSocket feature can be enabled in menuconfig using the :ref:`CONFIG_HTTPD_WS_SUPPORT` option.
 
-:example:`protocols/http_server/ws_echo_server` demonstrates how to create a WebSocket echo server using the HTTP server, which starts on a local network and requires a WebSocket client for interaction, echoing back received WebSocket frames.
+:example:`protocols/http_server/ws_echo_server` demonstrates how to create a basic WebSocket echo server using the HTTP server, which starts on a local network and requires a WebSocket client for interaction, echoing back received WebSocket frames.
+
+:example:`protocols/http_server/ws_extensions_server` demonstrates advanced WebSocket functionality including extension negotiation as per RFC 6455 Section 9, showing both standard and extension-enabled endpoints.
 
 
 WebSocket Pre-Handshake Callback
@@ -99,6 +101,37 @@ To use the WebSocket pre-handshake callback, you must enable :ref:`CONFIG_HTTPD_
 
     // Register the handler after starting the server:
     httpd_register_uri_handler(server, &ws);
+
+
+WebSocket Extensions
+^^^^^^^^^^^^^^^^^^^^
+
+The HTTP server supports WebSocket Extensions as defined in RFC 6455 Section 9, allowing negotiation of protocol extensions that can enhance WebSocket functionality beyond the base specification. Common extensions include compression (permessage-deflate) and custom vendor-specific features.
+
+Extensions are negotiated during the WebSocket handshake. The client sends a ``Sec-WebSocket-Extensions`` header listing offered extensions, and the server responds with a ``Sec-WebSocket-Extensions`` header indicating which extensions were negotiated. Extensions that cannot be negotiated are simply ignored, and the handshake proceeds normally.
+
+To enable WebSocket extensions for a URI handler, set the ``supported_extensions`` field in the ``httpd_uri_t`` structure to a comma-separated list of extension names that the server supports:
+
+.. code-block:: c
+
+    static const httpd_uri_t ws_with_extensions = {
+        .uri        = "/ws",
+        .method     = HTTP_GET,
+        .handler    = ws_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .supported_extensions = "permessage-deflate,compress"  // Server-supported extensions
+    };
+
+During handshake:
+1. Client sends ``Sec-WebSocket-Extensions: permessage-deflate`` (offers compression)
+2. Server finds intersection with ``"permessage-deflate,compress"`` supported list
+3. Server responds ``Sec-WebSocket-Extensions: permessage-deflate`` (negotiated extension)
+4. WebSocket connection proceeds with negotiated extensions active
+
+The :example:`protocols/http_server/ws_extensions_server` example demonstrates full extension negotiation with both standard and extended WebSocket endpoints.
+
+.. note:: WebSocket extensions are optional and backward compatible. Existing WebSocket handlers without ``supported_extensions`` work unchanged, as the field defaults to NULL (no extensions).
 
 
 Event Handling
@@ -179,4 +212,3 @@ API Reference
 -------------
 
 .. include-build-file:: inc/http_server.inc
-    

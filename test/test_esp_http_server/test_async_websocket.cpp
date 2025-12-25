@@ -126,7 +126,7 @@ void given_ws_connection_when_sending_sync_from_another_task_then_succeeds(void)
 
     void *task_args[] = {handle, &client_fds[0]};
     othread_t thread;
-    httpd_os_thread_create(&thread, "send_data_task_sync", 4096, 5, send_data_task_sync, &task_args, 0, 0);
+    httpd_os_thread_create(&thread, "send_data_task_sync", 8196, 5, send_data_task_sync, &task_args, 0, 0);
 
     ws_test_frame_t received_frame;
     memset(&received_frame, 0, sizeof(received_frame));
@@ -202,7 +202,7 @@ void given_ws_connection_when_sending_async_from_another_task_then_succeeds(void
 
     void *task_args[] = {handle, &client_fds[0]};
     othread_t thread;
-    httpd_os_thread_create(&thread, "send_data_task_async", 4096, 5, send_data_task_async, &task_args, 0, 0);
+    httpd_os_thread_create(&thread, "send_data_task_async", 8196, 5, send_data_task_async, &task_args, 0, 0);
 
     ws_test_frame_t received_frame;
     memset(&received_frame, 0, sizeof(received_frame));
@@ -275,7 +275,7 @@ void given_closed_ws_connection_when_sending_sync_then_fails(void)
 
     void *task_args[] = {handle, &client_fds[0]};
     othread_t thread;
-    httpd_os_thread_create(&thread, "send_data_task_sync_fail", 4096, 5, send_data_task_sync_fail, &task_args, 0, 0);
+    httpd_os_thread_create(&thread, "send_data_task_sync_fail", 8196, 5, send_data_task_sync_fail, &task_args, 0, 0);
 
     http_test_client_disconnect(client);
 
@@ -346,7 +346,7 @@ void given_closed_ws_connection_when_sending_async_then_callback_receives_error(
 
     void *task_args[] = {handle, &client_fds[0]};
     othread_t thread;
-    httpd_os_thread_create(&thread, "send_data_task_async_fail", 4096, 5, send_data_task_async_fail, &task_args, 0, 0);
+    httpd_os_thread_create(&thread, "send_data_task_async_fail", 8196, 5, send_data_task_async_fail, &task_args, 0, 0);
 
     http_test_client_disconnect(client);
 
