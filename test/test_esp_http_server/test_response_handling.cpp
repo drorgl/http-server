@@ -189,6 +189,87 @@ bool validate_range_not_satisfiable_response(const http_test_response_t *respons
     return range_valid;
 }
 
+/**
+ * Helper function: Validate 308 Permanent Redirect response format
+ *
+ * @param response The HTTP response to validate
+ * @param expected_location Expected Location header value (NULL to skip check)
+ * @return true if response is properly formatted for 308, false otherwise
+ */
+bool validate_permanent_redirect_response(const http_test_response_t *response,
+                                        const char *expected_location) {
+    // Check status code
+    if (response->status_code != 308) {
+        return false;
+    }
+
+    // Check Location header if expected
+    if (expected_location) {
+        const char *location = http_test_client_get_header(response, "Location");
+        if (!location) {
+            return false;
+        }
+
+        bool location_valid = (strcmp(location, expected_location) == 0);
+        free((void*)location);
+
+        if (!location_valid) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Helper function: Validate 421 Misdirected Request response format
+ *
+ * @param response The HTTP response to validate
+ * @return true if response is properly formatted for 421, false otherwise
+ */
+bool validate_misdirected_request_response(const http_test_response_t *response) {
+    // Check status code
+    if (response->status_code != 421) {
+        return false;
+    }
+
+    // RFC 7540 suggests clients might benefit from explanatory text
+    // but there are no mandatory headers for 421
+    return true;
+}
+
+/**
+ * Helper function: Validate 426 Upgrade Required response format
+ *
+ * @param response The HTTP response to validate
+ * @param expected_upgrade Expected Upgrade header value (e.g., "h2", "WebSocket", NULL to skip check)
+ * @return true if response is properly formatted for 426, false otherwise
+ */
+bool validate_upgrade_required_response(const http_test_response_t *response,
+                                       const char *expected_upgrade) {
+    // Check status code
+    if (response->status_code != 426) {
+        return false;
+    }
+
+    // Check Upgrade header if expected (RFC 7230 requires Upgrade header for 426)
+    if (expected_upgrade) {
+        const char *upgrade = http_test_client_get_header(response, "Upgrade");
+        if (!upgrade) {
+            return false;
+        }
+
+        bool upgrade_valid = (strcmp(upgrade, expected_upgrade) == 0);
+        free((void*)upgrade);
+
+        if (!upgrade_valid) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 
 /**
  * Test: given_valid_request_when_calling_httpd_resp_send_then_response_is_sent
@@ -761,6 +842,230 @@ void given_server_with_range_middleware_when_client_requests_invalid_range_then_
     httpd_stop(handle);
 }
 
+/**
+ * Test: given_server_with_redirect_handler_when_client_gets_then_308_permanent_redirect_returned_with_location_header
+ *
+ * Purpose: Verify that HTTP 308 Permanent Redirect responses can be sent with Location header
+ * RFC 9110 compliance: Section 15.4.9 (308 Permanent Redirect)
+ */
+void given_server_with_redirect_handler_when_client_gets_then_308_permanent_redirect_returned_with_location_header(void)
+{
+    // Given: Server with a handler that sends 308 Permanent Redirect
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9052; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t redirect_uri = {
+        .uri      = "/redirect",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            httpd_resp_set_status(req, HTTPD_308);
+            httpd_resp_set_hdr(req, "Location", "http://www.example.com/new-location");
+            httpd_resp_send(req, "Resource moved permanently", HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &redirect_uri));
+
+    // When: Client sends GET request to the redirect URI
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK,
+                     http_test_client_send_request(client, HTTP_METHOD_GET,
+                                                 "/redirect", NULL, NULL, 0,
+                                                 &response, TEST_TIMEOUT_MS));
+
+    // Then: Server returns 308 Permanent Redirect with Location header
+    TEST_ASSERT_TRUE(validate_permanent_redirect_response(&response, "http://www.example.com/new-location"));
+    TEST_ASSERT_EQUAL(308, response.status_code);
+    TEST_ASSERT_EQUAL_STRING("Resource moved permanently", response.body);
+
+    // Cleanup
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_with_redirect_handler_when_client_posts_then_308_permanent_redirect_returned_with_location_header
+ *
+ * Purpose: Verify that HTTP 308 Permanent Redirect preserves method semantics (tests server-side response)
+ * RFC 9110 compliance: Section 15.4.9 (308 Permanent Redirect)
+ */
+void given_server_with_redirect_handler_when_client_posts_then_308_permanent_redirect_returned_with_location_header(void)
+{
+    // Given: Server with a handler that sends 308 Permanent Redirect
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9053; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t redirect_uri = {
+        .uri      = "/redirect",
+        .method   = HTTP_POST,
+        .handler  = [](httpd_req_t *req) {
+            httpd_resp_set_status(req, HTTPD_308);
+            httpd_resp_set_hdr(req, "Location", "http://www.example.com/new-post-endpoint");
+            httpd_resp_send(req, "Resource moved permanently", HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &redirect_uri));
+
+    // When: Client sends POST request to the redirect URI (method preservation is tested on client side)
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    // Send POST request with a small body
+    const char *post_body = "test data";
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK,
+                     http_test_client_send_request(client, HTTP_METHOD_POST,
+                                                 "/redirect", NULL, post_body, strlen(post_body),
+                                                 &response, TEST_TIMEOUT_MS));
+
+    // Then: Server returns 308 Permanent Redirect (method preservation is client-side behavior)
+    TEST_ASSERT_TRUE(validate_permanent_redirect_response(&response, "http://www.example.com/new-post-endpoint"));
+    TEST_ASSERT_EQUAL(308, response.status_code);
+
+    // Note: Full method preservation testing requires extended http_test_client capabilities
+    // to automatically follow redirects while preserving the original method.
+
+    // Cleanup
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_with_misdirected_handler_when_client_requests_then_421_misdirected_request_returned
+ *
+ * Purpose: Verify that HTTP 421 Misdirected Request responses can be sent correctly
+ * RFC 7540 compliance: Section 9.1.2 (421 Misdirected Request)
+ */
+void given_server_with_misdirected_handler_when_client_requests_then_421_misdirected_request_returned(void)
+{
+    // Given: Server with a handler that sends 421 Misdirected Request for specific conditions
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9054; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t misdirected_uri = {
+        .uri      = "/misdirected",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            // Simulate misdirected request scenario (e.g., wrong server routing)
+            // In a real implementation, this could check request parameters, headers, etc.
+            // For testing, we simulate by checking for a specific query parameter
+            char query_buf[128];
+            esp_err_t err = httpd_req_get_url_query_str(req, query_buf, sizeof(query_buf));
+            if (err == ESP_OK && strstr(query_buf, "misdirect=1")) {
+                httpd_resp_set_status(req, HTTPD_421);
+                httpd_resp_send(req, "Request directed to wrong server", HTTPD_RESP_USE_STRLEN);
+                return ESP_OK;
+            }
+
+            // Normal request
+            httpd_resp_send(req, "Request handled correctly", HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &misdirected_uri));
+
+    // When: Client sends request that triggers misdirected response
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK,
+                     http_test_client_send_request(client, HTTP_METHOD_GET,
+                                                 "/misdirected?misdirect=1", NULL, NULL, 0,
+                                                 &response, TEST_TIMEOUT_MS));
+
+    // Then: Server returns 421 Misdirected Request
+    TEST_ASSERT_TRUE(validate_misdirected_request_response(&response));
+    TEST_ASSERT_EQUAL_STRING("Request directed to wrong server", response.body);
+
+    // Cleanup
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
+/**
+ * Test: given_server_with_upgrade_handler_when_client_requests_http1_then_426_upgrade_required_returned_with_h2_header
+ *
+ * Purpose: Verify that HTTP 426 Upgrade Required responses can be sent with Upgrade header for HTTP/2
+ * RFC 7230 compliance: Section 6.7 (426 Upgrade Required)
+ */
+void given_server_with_upgrade_handler_when_client_requests_http1_then_426_upgrade_required_returned_with_h2_header(void)
+{
+    // Given: Server configured to require HTTP/2 for certain resources
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 9055; // Use a unique port
+    httpd_handle_t handle = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    httpd_uri_t upgrade_uri = {
+        .uri      = "/upgrade_only",
+        .method   = HTTP_GET,
+        .handler  = [](httpd_req_t *req) {
+            // Check for HTTP version or other conditions that require upgrade
+            // For this test, we'll require upgrade based on a custom header
+            char version_buf[64];
+            esp_err_t err = httpd_req_get_hdr_value_str(req, "X-Require-HTTP2", version_buf, sizeof(version_buf));
+            if (err == ESP_OK && strcmp(version_buf, "true") == 0) {
+                httpd_resp_set_status(req, HTTPD_426);
+                httpd_resp_set_hdr(req, "Upgrade", "h2");
+                httpd_resp_send(req, "HTTP/2 required for this resource", HTTPD_RESP_USE_STRLEN);
+                return ESP_OK;
+            }
+
+            // Normal request
+            httpd_resp_send(req, "Request handled with current protocol", HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        },
+        .user_ctx = NULL
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &upgrade_uri));
+
+    // When: Client sends request that requires protocol upgrade
+    http_test_client_handle_t *client = http_test_client_init();
+    TEST_ASSERT_NOT_NULL(client);
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
+
+    // Send request with header indicating HTTP/2 is required
+    char *headers = (char*)malloc(1024);
+    snprintf(headers, 1024, "X-Require-HTTP2: true\r\n");
+
+    http_test_response_t response = {0};
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK,
+                     http_test_client_send_request(client, HTTP_METHOD_GET,
+                                                 "/upgrade_only", headers, NULL, 0,
+                                                 &response, TEST_TIMEOUT_MS));
+
+    free(headers);
+
+    // Then: Server returns 426 Upgrade Required with Upgrade: h2 header
+    TEST_ASSERT_TRUE(validate_upgrade_required_response(&response, "h2"));
+    TEST_ASSERT_EQUAL_STRING("HTTP/2 required for this resource", response.body);
+
+    // Cleanup
+    http_test_client_free_response(&response);
+    http_test_client_disconnect(client);
+    httpd_stop(handle);
+}
+
 int test_response_handling(void) {
     // UNITY_BEGIN();
     UnitySetTestFile(__FILE__);
@@ -777,6 +1082,12 @@ int test_response_handling(void) {
 
     RUN_TEST(given_server_with_range_middleware_when_client_requests_valid_range_then_206_partial_content_returned);
     RUN_TEST(given_server_with_range_middleware_when_client_requests_invalid_range_then_416_range_not_satisfiable_returned);
+
+    RUN_TEST(given_server_with_redirect_handler_when_client_gets_then_308_permanent_redirect_returned_with_location_header);
+    RUN_TEST(given_server_with_redirect_handler_when_client_posts_then_308_permanent_redirect_returned_with_location_header);
+
+    RUN_TEST(given_server_with_misdirected_handler_when_client_requests_then_421_misdirected_request_returned);
+    RUN_TEST(given_server_with_upgrade_handler_when_client_requests_http1_then_426_upgrade_required_returned_with_h2_header);
 
     // return UNITY_END();
     return 0;

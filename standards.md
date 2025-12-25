@@ -214,11 +214,11 @@ This report analyzes the HTTP server library implementation against multiple RFC
 - ✅ 505 Version Not Supported: Invalid HTTP version handling tested
 
 **Test Gaps:**
-- ❌ 206 Partial Content response formatting with range request integration
-- ❌ 308 Permanent Redirect behavior testing
-- ❌ 416 Range Not Satisfiable validation
-- ❌ 421 Misdirected Request error handling
-- ❌ 426 Upgrade Required protocol negotiation testing
+- ✅ 206 Partial Content: `given_server_with_range_middleware_when_client_requests_valid_range_then_206_partial_content_returned` - Comprehensively tested with Content-Range headers and range validation (December 2025)
+- ✅ 308 Permanent Redirect: `given_server_with_redirect_handler_when_client_gets_then_308_permanent_redirect_returned_with_location_header` - Tested with Location header validation (December 2025)
+- ✅ 416 Range Not Satisfiable: `given_server_with_range_middleware_when_client_requests_invalid_range_then_416_range_not_satisfiable_returned` - Tested with invalid range scenarios (December 2025)
+- ✅ 421 Misdirected Request: `given_server_with_misdirected_handler_when_client_requests_then_421_misdirected_request_returned` - Tested with routing error scenarios (December 2025)
+- ✅ 426 Upgrade Required: `given_server_with_upgrade_handler_when_client_requests_http1_then_426_upgrade_required_returned_with_h2_header` - Tested with Upgrade header validation (December 2025)
 
 ### 7. **HTTP/1.1 Security Features**
 
