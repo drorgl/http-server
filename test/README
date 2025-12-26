@@ -1,11 +1,98 @@
+# Testing Guidelines
 
-This directory is intended for PlatformIO Test Runner and project tests.
+## Test Organization and Rules
 
-Unit Testing is a software testing method by which individual units of
-source code, sets of one or more MCU program modules together with associated
-control data, usage procedures, and operating procedures, are tested to
-determine whether they are fit for use. Unit testing finds problems early
-in the development cycle.
+### Cross-Platform Requirements
+Tests should be cross-platform:
+- DO NOT use platform specific libraries such as Windows Sockets and FreeRTOS
+- Cross-platform abstractions can be found at `lib/http-server/src/port` and `lib/generic_event_groups`
 
-More information about PlatformIO Unit Testing:
-- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+### Test Framework
+- The test framework is Unity, found in `.pio\libdeps\native\Unity\src\unity.h`
+- Use `void test_function(){}` for test functions with `RUN_TEST` methodology
+- Always follow the arrange-act-assert pattern in test function names
+
+### Test Best Practices
+- Each test function should verify a single, specific behavior or scenario
+- Avoid combining multiple distinct test cases or scenarios within a single test function. If a test needs to cover different conditions (e.g., "less data" and "more data" for content length), split them into separate test functions
+- **NEVER** test by adding extern to private functions; find public methods, arguments, and flow to test the required functionality
+- When running tests locally, use `pio test -e native -vvv` to capture debug logs
+- Never directly encode base64; use constants and encode to base64 using the base64 encoding function
+- Avoid using TEST_ASSERT_TRUE or TEST_ASSERT_FALSE since they don't specify what went wrong and how
+- Always add to tests; if you need to remove a test, comment it out but never delete it and specify the reason at the top
+- Tests should be located in `./test` folders starting with `test_<library name>`, e.g., `test_esp_http_server` for `esp_http_server`
+
+Tests are organized by library in `test/test_<library_name>/` directories. Choose the test suite closest to the component, functionality, or protocol being tested. The main server functionality belongs in esp_http_server, middleware components in http_server_middleware, end-to-end tests in e2e_middleware, and utility libraries in their respective suites.
+
+### esp_http_server (`test/test_esp_http_server/`)
+
+Tests the core HTTP server functionality, including request handling, response generation, WebSockets, security, and compliance with HTTP standards. Primary location for testing server-side HTTP operations and protocols.
+
+### Test Structure and Execution
+- Tests are categorized based on client management, error handling, request processing, response handling, server lifecycle, uri handlers, utilities, websocket, and others
+- Utilize the appropriate category test file or create a new one if needed
+- Tests are executed from their own category's test runner function
+- Category runners are executed from the test_esp_http_server main function
+- Only test_esp_http_server contains setUp and tearDown functions
+- Each category test file has tests in a .cpp file and a header file exposing the test runner
+
+Read `test/test_esp_http_server/test.md` for further information about this suite
+
+- **Server Lifecycle**: Tests for server startup, shutdown, and configuration (e.g., port assignment, error handling)
+- **URI Handlers**: Tests for registering, unregistering, and managing URI handlers
+- **Request Processing**: Tests for parsing HTTP requests, headers, URL queries, and cookies
+- **Response Handling**: Tests for sending responses, chunked encoding, large responses, and custom handlers
+- **WebSocket**: Tests for WebSocket upgrades, frame exchange, extensions, and keep-alive
+- **Client Management**: Tests for connection limits, LRU eviction, and client callbacks
+- **Error Handling**: Tests for HTTP error responses (404, 405, etc.) and content validation
+- **Utilities**: Tests for utility functions, URI matching, and context management
+- **Authentication**: Tests for HTTP Basic authentication headers and validation
+- **Security**: Tests for preventing response splitting, header injection, and request smuggling
+- **HTTP Methods**: Tests for PUT, DELETE, HEAD methods and method validation
+- **Async Requests**: Tests for asynchronous request processing
+- **Async WebSocket**: Tests for asynchronous WebSocket sending and error handling
+- **Async Work Queue**: Tests for asynchronous work queue functionality
+- **Chunked Request Parsing**: Tests for parsing chunked request bodies
+- **Chunked Response**: Tests for sending chunked response bodies
+- **Session Context**: Tests for session context creation and persistence
+- **Leftover Data**: Tests for handling unread body data in requests
+- **Empty Header**: Tests for parsing requests with empty headers
+- **WebSocket Extensions**: Tests for WebSocket extension negotiation and handling
+
+### http_server_middleware (`test/test_http_server_middleware/`)
+
+Tests middleware components that extend HTTP server capabilities, including authentication, CORS, conditional requests, and content negotiation. Use for testing individual middleware modules and their integration.
+
+- **Authentication**: Tests for authentication middleware functionality
+- **Conditional**: Tests for conditional requests (ETags, If-Match, If-None-Match, etc.)
+- **Content Negotiation**: Tests for content negotiation algorithms
+- **Content Negotiation Integration**: Tests for integrating content negotiation with middleware
+- **CORS**: Tests for Cross-Origin Resource Sharing middleware
+- **Framework**: Tests for general middleware framework functionality
+- **Logging**: Tests for logging middleware
+- **Range**: Tests for range request handling (Range header)
+
+### e2e_middleware (`test/test_e2e_middleware/`)
+
+Tests end-to-end behavior of middleware components in integrated scenarios, verifying real-world usage and interaction between parts. Use for tests that span multiple middleware modules.
+
+- **Content Negotiation**: End-to-end tests for content negotiation functionality
+- **Middleware**: End-to-end tests for overall middleware integration
+
+### base64 (`test/test_base64/`)
+
+Tests the base64 utility library for encoding and decoding binary data, used for data transmission and authentication headers. Use for testing base64 protocol compliance and data integrity.
+
+- **Encoding/Decoding**: Tests for base64 encoding and decoding, including padding, binary data, and roundtrip validation
+
+### hashing (`test/test_hashing/`)
+
+Tests the hashing library for cryptographic hash functions like SHA1, ensuring data integrity and supporting security features. Use for testing hash computation, collision resistance, and protocol compliance.
+
+- **SHA1**: Tests for SHA1 hash computation with various inputs
+
+### generic_event_groups (`test/test_generic_event_groups/`)
+
+Tests the event groups library providing cross-platform event synchronization mechanisms for concurrent programming. Use for testing async operations, thread synchronization, and event-based workflows.
+
+- **Event Groups**: Tests for portable event groups functionality (cross-platform event handling)

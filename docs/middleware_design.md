@@ -144,12 +144,21 @@ ESP HTTP Server
 │       │ ┌───────────────┬─────────────────┐ │
 │       │ │ Registration  │ Execution       │ │
 │       │ │ API           │ Engine          │ │
+│       │ │ (Generic      │ (Calls          │ │
+│       │ │ Interface)    │ Registered      │ │
 │       │ └───────────────┴─────────────────┘ │
 │       └─────────────────────────────────────┘
 ├── Request/Response APIs (httpd_txrx.c)
 ├── Parser (httpd_parse.c)
 └── Test Infrastructure
     └── test_middleware.cpp
+
+ARCHITECTURAL CONSTRAINTS:
+• Core server (httpd_uri.c) never includes specific middleware headers
+• Core server calls middleware through generic registration interface
+• Specific middleware libraries register functions but are not linked into core
+• Middleware libraries can reference core server APIs (session mgmt, etc.)
+• This maintains unidirectional dependency: middleware → core server
 ```
 
 ### 3.3 Execution Flow (Standalone Component)
