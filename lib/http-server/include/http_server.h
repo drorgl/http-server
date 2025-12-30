@@ -24,6 +24,22 @@
 
 #endif
 
+/* Forward declarations for types used but defined in other headers */
+typedef void* httpd_handle_t;
+
+/**
+ * @brief Connection persistence configuration
+ *
+ * Defines configuration parameters for HTTP/1.1 connection persistence
+ * and keep-alive behavior, implementing RFC 9112 Section 9.3.
+ */
+typedef struct httpd_connection_config {
+    bool enable_persistence;         /*!< Enable HTTP/1.1 connection persistence (default: true) */
+    uint32_t max_requests_per_conn;  /*!< Maximum requests per connection (0 = unlimited) */
+    uint32_t max_idle_sec;           /*!< Maximum idle time before closing connection (0 = use TCP keep-alive) */
+    uint32_t max_lifetime_sec;       /*!< Maximum connection lifetime (0 = unlimited) */
+} httpd_connection_config_t;
+
 #include <http_parser.h>
 #include "http_server_config.h"
 #include "httpd_chunked.h"
@@ -93,7 +109,13 @@ initializer that should be kept in sync
         .open_fn = NULL,                                \
         .close_fn = NULL,                               \
         .uri_match_fn = NULL,                           \
-        .transfer_cfg = httpd_transfer_default_config   \
+        .transfer_cfg = httpd_transfer_default_config,  \
+        .connection_config = {                          \
+            .enable_persistence = true,                 \
+            .max_requests_per_conn = 0,                 \
+            .max_idle_sec = 10,                         \
+            .max_lifetime_sec = 0                       \
+        }                                               \
 }
 
 #define ESP_ERR_HTTPD_BASE              (0xb000)                    /*!< Starting number of HTTPD error codes */
@@ -295,6 +317,11 @@ typedef struct httpd_config {
      */
     httpd_uri_match_func_t uri_match_fn;
     httpd_transfer_config_t transfer_cfg;  /*!< Transfer-Encoding configuration */
+
+    /**
+     * Connection persistence configuration
+     */
+    httpd_connection_config_t connection_config;  /*!< HTTP/1.1 connection persistence settings */
 } httpd_config_t;
 
 /**
@@ -389,6 +416,7 @@ typedef struct httpd_req {
     httpd_handle_t  handle;                     /*!< Handle to server instance */
     int             method;                     /*!< The type of HTTP request, -1 if unsupported method, HTTP_ANY for wildcard method to support every method */
     const char      uri[HTTPD_MAX_URI_LEN + 1]; /*!< The URI of this request (1 byte extra for null termination) */
+    const char      version[16];                /*!< HTTP version string (e.g., "HTTP/1.1", "HTTP/1.0") */
     size_t          content_len;                /*!< Length of the request body */
     void           *aux;                        /*!< Internally used members */
 

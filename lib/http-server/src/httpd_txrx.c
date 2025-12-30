@@ -21,6 +21,7 @@
 
 #include <log.h>
 #include "httpd_chunked.h"
+#include "httpd_connection.h"
 
 #define HTTPD_ERR_CHUNK_SIZE_INVALID 0x1000
 
@@ -348,6 +349,36 @@ esp_err_t httpd_resp_send(httpd_req_t *r, const char *buf, ssize_t buf_len)
 
     /* Request headers are no longer available */
     ra->req_hdrs_count = 0;
+
+    /* Automatically add Connection header when connection will not persist after response */
+    bool should_add_connection_header = false;
+    const char *connection_value = NULL;
+
+    if (!httpd_connection_should_persist(r->handle, ra->sd->fd)) {
+        should_add_connection_header = true;
+        connection_value = "close";
+        LOGD(TAG, "Adding Connection: close header for fd=%d", ra->sd->fd);
+    }
+
+    /* Check if Connection header is already manually set */
+    bool connection_header_exists = false;
+    if (should_add_connection_header) {
+        for (unsigned i = 0; i < ra->resp_hdrs_count; i++) {
+            if (strcasecmp(ra->resp_hdrs[i].field, "Connection") == 0) {
+                connection_header_exists = true;
+                break;
+            }
+        }
+    }
+
+    /* Add Connection header if needed and not already present */
+    if (should_add_connection_header && !connection_header_exists) {
+        esp_err_t hdr_err = httpd_resp_set_hdr(r, "Connection", connection_value);
+        if (hdr_err != ESP_OK) {
+            LOGW(TAG, "Failed to add Connection header: %d", hdr_err);
+            // Continue anyway, as this shouldn't prevent response sending
+        }
+    }
 
     /* Size of essential headers is limited by scratch buffer size */
     if (snprintf(ra->scratch, sizeof(ra->scratch), httpd_hdr_str,

@@ -217,6 +217,9 @@ static esp_err_t start_test_server(const httpd_middleware_config_t *configs, siz
 static void stop_test_server(httpd_handle_t handle, httpd_uri_t *wrapped) {
     TEST_LOGD("Stopping test server");
     httpd_unregister_uri_handler(handle, "/test", HTTP_GET);
+    if (httpd_is_wrapped_handler(wrapped)) {
+        httpd_free_wrapped_ctx(wrapped->user_ctx);
+    }
     free(wrapped);
     httpd_stop(handle);
 }

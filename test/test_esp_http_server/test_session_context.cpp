@@ -37,7 +37,9 @@ static void adder_free_func(void *ctx)
 static esp_err_t adder_post_handler(httpd_req_t *req)
 {
     char buf[10];
+    memset(buf, 0, sizeof(buf));
     char outbuf[50];
+    memset(outbuf, 0, sizeof(outbuf));
     int ret;
 
     ret = httpd_req_recv(req, buf, sizeof(buf));
@@ -65,6 +67,7 @@ static esp_err_t adder_post_handler(httpd_req_t *req)
     int *adder = (int *)req->sess_ctx;
     *adder += val;
 
+    LOGI(TAG, "adder ptr=%p, *adder=%d", adder, *adder);
     snprintf(outbuf, sizeof(outbuf),"%d", *adder);
     httpd_resp_send(req, outbuf, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;

@@ -31,6 +31,8 @@
 #include "test_chunked_response.h"
 #include "test_websocket_extensions.h"
 #include "test_websocket_extensions_e2e.h"
+#include "test_connection_persistence.h"
+#include "test_connection_persistence_e2e.h"
 #define TAG "TEST_HTTPD_COORDINATOR"
 
 void setUp(){
@@ -59,7 +61,6 @@ int test_esp_http_server(){
         test_response_handling()+
         test_request_processing()+
         test_async_websocket()+
-        test_session_context()+
         test_leftover_data()+
         test_async_work_queue()+
         test_empty_header()+
@@ -69,11 +70,14 @@ int test_esp_http_server(){
         test_chunked_response() +
         test_async_requests() +
         test_chunked_request_parsing() +
-        test_websocket()+
         test_websocket_extensions_api() +
         test_websocket_extensions_parser() +
         test_websocket_extensions_integration() +
-        test_websocket_extensions_e2e();
+        test_websocket_extensions_e2e() +
+        test_session_context() +
+        test_connection_persistence_e2e() + 
+        test_websocket()+
+        test_connection_persistence();
 }
 
 #ifdef __cplusplus

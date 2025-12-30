@@ -45,6 +45,7 @@
 #define HTTPD_MAX_SOCKETS 15
 #endif
 #include "util/ctrl_sock.h"
+#include "httpd_connection.h"
 
 static const int DEFAULT_KEEP_ALIVE_IDLE = 5;
 static const int DEFAULT_KEEP_ALIVE_INTERVAL= 5;
@@ -353,15 +354,14 @@ static esp_err_t httpd_server(struct httpd_data *hd)
     int active_cnt = select(maxfd + 1, &read_set, NULL, NULL, &timeout);
     if (active_cnt < 0) {
         LOGE(TAG, LOG_FMT("error in select (%d)"), errno);
-        httpd_sess_delete_invalid(hd);
-        // If select fails with EBADF, it's a critical error.
-        // Returning ESP_FAIL will cause the httpd_thread to exit.
+        // If select fails with EBADF, clean up invalid sessions and exit
         if (errno == EBADF) {
+            httpd_sess_delete_invalid(hd);
             // Invalidate listen_fd as well, as it could also be the source of EBADF
             hd->listen_fd = -1;
             return ESP_FAIL;
         }
-        return ESP_OK; // For other non-critical select errors, continue.
+        return ESP_OK; // For other non-critical select errors, continue without cleanup.
     }
 
     /* Case0: Do we have a control message? */

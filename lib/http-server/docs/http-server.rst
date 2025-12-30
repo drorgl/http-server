@@ -134,6 +134,92 @@ The :example:`protocols/http_server/ws_extensions_server` example demonstrates f
 .. note:: WebSocket extensions are optional and backward compatible. Existing WebSocket handlers without ``supported_extensions`` work unchanged, as the field defaults to NULL (no extensions).
 
 
+Connection Persistence API
+--------------------------
+
+The HTTP Server supports RFC 9112 Section 9.3 connection persistence (keep-alive), allowing multiple HTTP requests to be sent over a single TCP connection. This improves performance by reducing connection overhead and enabling better resource utilization.
+
+Connection persistence is configured through ``httpd_config_t`` during server initialization:
+
+.. code-block:: c
+
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.connection_config.enable_persistence = true;      // Enable persistent connections (default)
+    config.connection_config.max_requests_per_conn = 100;    // Max requests per connection
+    config.connection_config.max_idle_sec = 10;              // Idle timeout seconds
+    config.connection_config.max_lifetime_sec = 0;           // Unlimited lifetime (0 = no limit)
+
+    httpd_handle_t server = NULL;
+    httpd_start(&server, &config);
+
+Connection State Functions
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following functions provide programmatic control over connection persistence state:
+
+.. code-block:: c
+
+    // Check if connection should remain persistent
+    bool httpd_connection_should_persist(httpd_handle_t hd, int sockfd);
+
+    // Force connection to close after current response
+    esp_err_t httpd_connection_close_after_response(httpd_handle_t hd, int sockfd);
+
+    // Mark connection as WebSocket (persistent by default)
+    esp_err_t httpd_connection_mark_websocket(httpd_handle_t hd, int sockfd);
+
+    // Get connection context for inspection
+    httpd_connection_ctx_t* httpd_connection_get_ctx(httpd_handle_t hd, int sockfd);
+
+Request Processing Functions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These functions are used internally by the server but can be useful for custom request processing:
+
+.. code-block:: c
+
+    // Process Connection header and update persistence state
+    esp_err_t httpd_connection_process_headers(httpd_handle_t hd, int sockfd,
+                                             const char* http_version,
+                                             const char* connection_header);
+
+    // Initialize connection context for new connection
+    esp_err_t httpd_connection_init(httpd_handle_t hd, int sockfd);
+
+    // Update activity timestamp for connection
+    esp_err_t httpd_connection_update_timestamp(httpd_handle_t hd, int sockfd);
+
+    // Clean up connection context when connection closes
+    esp_err_t httpd_connection_cleanup(httpd_handle_t hd, int sockfd);
+
+Connection persistence behavior follows RFC 9112 rules:
+
+- **HTTP/1.1**: Connections remain persistent unless ``Connection: close`` is sent
+- **HTTP/1.0**: Connections close by default unless ``Connection: keep-alive`` is sent
+- **WebSocket**: Connections remain persistent regardless of timeout limits
+- **Timeouts**: Connections close if idle longer than ``max_idle_sec`` or older than ``max_lifetime_sec``
+- **Request Limits**: Connections close after ``max_requests_per_conn`` requests (0 = unlimited)
+
+Example Usage
+^^^^^^^^^^^^^
+
+.. code-block:: c
+
+    esp_err_t my_handler(httpd_req_t *req)
+    {
+        // Check connection persistence state
+        if (httpd_connection_should_persist(req->handle, httpd_req_to_sockfd(req))) {
+            ESP_LOGI(TAG, "Connection will persist after this response");
+        }
+
+        // Force connection closure if needed (e.g., after error)
+        httpd_connection_close_after_response(req->handle, httpd_req_to_sockfd(req));
+
+        httpd_resp_send(req, "Hello", 5);
+        return ESP_OK;
+    }
+
+
 Event Handling
 --------------
 

@@ -310,10 +310,11 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
         request_len += strlen(content_length_hdr);
     }
 
-    // Conditionally add Connection: close
+    // Conditionally add Connection: keep-alive (HTTP/1.1 default)
     bool is_websocket_upgrade = (headers_str != NULL && strstr(headers_str, "Upgrade: websocket") != NULL);
-    if (!is_websocket_upgrade) {
-        request_len += strlen("Connection: close\r\n");
+    bool has_connection_header = (headers_str != NULL && strstr(headers_str, "Connection:") != NULL);
+    if (!is_websocket_upgrade && !has_connection_header) {
+        request_len += strlen("Connection: keep-alive\r\n");
     }
     request_len += strlen("\r\n"); // End of headers
 
@@ -332,8 +333,8 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
         snprintf(content_length_hdr, sizeof(content_length_hdr), "Content-Length: %zu\r\n", body_len);
         strcat(full_request, content_length_hdr);
     }
-    if (!is_websocket_upgrade) {
-        strcat(full_request, "Connection: close\r\n");
+    if (!is_websocket_upgrade && !has_connection_header) {
+        strcat(full_request, "Connection: keep-alive\r\n");
     }
     strcat(full_request, "\r\n"); // End of headers
 
@@ -446,6 +447,160 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
         size_t total_body_read = body_bytes_in_buf;
 
     while (total_body_read < content_length) {
+            bytes_read = recv(client_handle->sockfd, response->body + total_body_read, content_length - total_body_read, 0);
+            if (bytes_read == -1) {
+                http_test_client_free_response(response);
+                #ifdef _WIN32
+                LOGD(TAG, "Error reading response body: %d", WSAGetLastError());
+                #else
+                LOGD(TAG, "Error reading response body: %s", strerror(errno));
+                #endif
+                return HTTP_TEST_CLIENT_ERR_RECV;
+            }
+            if (bytes_read == 0) {
+                // Connection closed prematurely
+                http_test_client_free_response(response);
+                LOGD(TAG, "Connection closed prematurely while reading body. Expected %d, received %d", content_length, total_body_read);
+                return HTTP_TEST_CLIENT_ERR_PROTOCOL;
+            }
+            total_body_read += bytes_read;
+            LOGD(TAG, "Read %d bytes, total %d/%d", bytes_read, total_body_read, content_length);
+        }
+        response->body[response->body_len] = '\0'; // Null-terminate body
+    } else {
+        // No Content-Length or 0, body is what's left in the buffer
+        if (body_bytes_in_buf > 0) {
+            response->body = (char*) malloc(body_bytes_in_buf + 1);
+            if (!response->body) {
+                http_test_client_free_response(response);
+                return HTTP_TEST_CLIENT_ERR_GENERIC;
+            }
+            memcpy(response->body, body_start, body_bytes_in_buf);
+            response->body_len = body_bytes_in_buf;
+            response->body[response->body_len] = '\0';
+        }
+    }
+
+    return HTTP_TEST_CLIENT_OK;
+}
+
+http_test_client_err_t http_test_client_send_raw_request(http_test_client_handle_t *client_handle,
+                                                        const char *request_str, size_t request_len,
+                                                        http_test_response_t *response,
+                                                        uint32_t timeout_ms) {
+    LOGD(TAG, "sending raw request of length %zu", request_len);
+    if (client_handle == NULL || request_str == NULL || request_len == 0 || response == NULL) {
+        return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
+    }
+    if (client_handle->sockfd == -1) {
+        return HTTP_TEST_CLIENT_ERR_CONNECT; // Not connected
+    }
+
+    // Initialize response structure
+    memset(response, 0, sizeof(http_test_response_t));
+
+    // Send the raw request string directly
+    http_test_client_err_t err = send_data(client_handle->sockfd, request_str, request_len, timeout_ms);
+    if (err != HTTP_TEST_CLIENT_OK) {
+        return err;
+    }
+
+    // Receive the HTTP response using the same logic as send_request
+    char recv_buf[HTTP_RECV_BUFFER_SIZE] = {0};
+    size_t total_recv = 0;
+    int bytes_read;
+    char *header_end = NULL;
+
+    // Read until we find the end of headers (\r\n\r\n)
+    while (header_end == NULL && total_recv < HTTP_RECV_BUFFER_SIZE) {
+        bytes_read = recv_data(client_handle->sockfd, recv_buf + total_recv, HTTP_RECV_BUFFER_SIZE - total_recv - 1, timeout_ms);
+        if (bytes_read == -1) {
+            return HTTP_TEST_CLIENT_ERR_RECV;
+        }
+        if (bytes_read == 0) { // Timeout or connection closed
+            if (total_recv == 0) { // No data received at all
+                return HTTP_TEST_CLIENT_ERR_TIMEOUT;
+            }
+            break; // Connection closed after some data, try to parse what we have
+        }
+        LOGD_BUFFER_HEXDUMP(TAG, recv_buf + total_recv, bytes_read, "received");
+        total_recv += bytes_read;
+        recv_buf[total_recv] = '\0'; // Null-terminate for strstr
+        header_end = strstr(recv_buf, "\r\n\r\n");
+    }
+
+    LOGD_BUFFER_HEXDUMP(TAG, recv_buf, total_recv, "raw request response done %p", header_end);
+
+    if (header_end == NULL) {
+        LOGD(TAG, "Header not found");
+        return HTTP_TEST_CLIENT_ERR_PROTOCOL; // Did not find end of headers
+    }
+
+    // Parse the response (status line, headers)
+    *header_end = '\0'; // Null-terminate headers part
+    char *body_start = header_end + 4; // Point to start of body
+
+    // Parse status line
+    char *status_line_end = strstr(recv_buf, "\r\n");
+    if (!status_line_end) {
+        LOGD(TAG, "Header not terminated");
+        return HTTP_TEST_CLIENT_ERR_PROTOCOL;
+    }
+    *status_line_end = '\0';
+
+    // Parse status line: "HTTP/1.1 401 Unauthorized"
+    int status_code;
+    char status_text[256];
+    int parsed = sscanf(recv_buf, "HTTP/%*d.%*d %d %[^\r\n]", &status_code, status_text);
+    if (parsed < 1) {
+        LOGD(TAG, "Could not parse status code");
+        return HTTP_TEST_CLIENT_ERR_PROTOCOL;
+    }
+
+    response->status_code = status_code;
+    strncpy(response->status_text, status_text, sizeof(response->status_text) - 1);
+    response->status_text[sizeof(response->status_text) - 1] = '\0';
+
+    if (parsed == 1) {
+        // No status text present
+        strcpy(response->status_text, "");
+    }
+
+    // Copy headers
+    response->headers = strdup(status_line_end + 2); // Skip "\r\n" after status line
+    if (!response->headers) {
+        return HTTP_TEST_CLIENT_ERR_GENERIC;
+    }
+
+    // Determine Content-Length
+    size_t content_length = 0;
+    char *content_length_hdr = strstr(response->headers, "Content-Length:");
+    if (content_length_hdr) {
+        content_length = atoi(content_length_hdr + strlen("Content-Length:"));
+    }
+
+    // Read response body
+    size_t header_len = (body_start - recv_buf);
+    size_t body_bytes_in_buf = total_recv - header_len;
+
+    if (content_length > 0) {
+        LOGD(TAG, "Allocating content length %d", content_length);
+        response->body = (char*) malloc(content_length + 1);
+        if (!response->body) {
+            http_test_client_free_response(response);
+            return HTTP_TEST_CLIENT_ERR_GENERIC;
+        }
+        response->body_len = content_length;
+
+        // Copy body data already in buffer
+        if (body_bytes_in_buf > 0) {
+            memcpy(response->body, body_start, body_bytes_in_buf < content_length ? body_bytes_in_buf : content_length);
+        }
+
+        // Read remaining body data
+        size_t total_body_read = body_bytes_in_buf < content_length ? body_bytes_in_buf : content_length;
+
+        while (total_body_read < content_length) {
             bytes_read = recv(client_handle->sockfd, response->body + total_body_read, content_length - total_body_read, 0);
             if (bytes_read == -1) {
                 http_test_client_free_response(response);

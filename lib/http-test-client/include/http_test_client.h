@@ -47,6 +47,16 @@ typedef struct {
     size_t body_len;
 } http_test_response_t;
 
+// Case-insensitive string comparison helper for tests
+#define TEST_ASSERT_STRCASEEQ(expected, actual) \
+    do { \
+        if (strcasecmp(expected, actual) != 0) { \
+            char msg[256]; \
+            snprintf(msg, sizeof(msg), "Expected '%s' but got '%s' (case-insensitive)", expected, actual); \
+            TEST_FAIL_MESSAGE(msg); \
+        } \
+    } while(0)
+
 // --- WebSocket Definitions ---
 
 typedef enum {
@@ -114,6 +124,21 @@ http_test_client_err_t http_test_client_send_request(http_test_client_handle_t *
                                                      const char *body, size_t body_len,
                                                      http_test_response_t *response,
                                                      uint32_t timeout_ms);
+
+/**
+ * @brief Sends a raw HTTP request string and receives the response.
+ * @param client_handle The client handle.
+ * @param request_str The raw HTTP request string to send (e.g., "GET / HTTP/1.1\r\nHost:...\r\n\r\n").
+ * @param request_len Length of the request string.
+ * @param response Pointer to a http_test_response_t structure to fill with response data.
+ *                 The caller is responsible for freeing response->headers and response->body.
+ * @param timeout_ms Timeout for sending and receiving the full response.
+ * @return HTTP_TEST_CLIENT_OK on success, or an error code.
+ */
+http_test_client_err_t http_test_client_send_raw_request(http_test_client_handle_t *client_handle,
+                                                        const char *request_str, size_t request_len,
+                                                        http_test_response_t *response,
+                                                        uint32_t timeout_ms);
 
 /**
  * @brief Frees memory allocated for a http_test_response_t.

@@ -54,6 +54,7 @@ typedef struct {
         const char *at;
         size_t      length;
     } last;
+    char current_field[64]; /* Current header field being parsed */
 
     /* State variables */
     bool   paused;          /*!< Parser is paused */
@@ -100,6 +101,9 @@ static esp_err_t verify_url (http_parser *parser)
         parser_data->error = HTTPD_505_VERSION_NOT_SUPPORTED;
         return ESP_FAIL;
     }
+
+    /* Set version string in request */
+    snprintf((char*)r->version, sizeof(r->version), "HTTP/%d.%d", parser->http_major, parser->http_minor);
 
     /* Parse URL and keep result for later */
     http_parser_url_init(res);
@@ -326,6 +330,9 @@ static esp_err_t cb_headers_complete(http_parser *parser)
         /* Locate end of last header */
         char *at = (char *)parser_data->last.at + parser_data->last.length;
 
+        /* Null-terminate the header value before overwriting line terminators */
+        *at = '\0';
+
         /* Check if there is data left to parse. This value should
          * at least be equal to the number of line terminators, i.e. 2 */
         ssize_t remaining_length = parser_data->raw_datalen - (at - ra->scratch);
@@ -439,6 +446,11 @@ static esp_err_t cb_headers_complete(http_parser *parser)
         parser_data->status = PARSING_FAILED;
         return ESP_FAIL;
 #endif
+    }
+
+    /* Extract Connection header immediately before buffer gets corrupted */
+    if (httpd_req_get_hdr_value_str(r, "Connection", ra->connection_hdr, sizeof(ra->connection_hdr)) != ESP_OK) {
+        ra->connection_hdr[0] = '\0';  // Clear if not found
     }
 
     parser_data->status = PARSING_BODY;
@@ -708,6 +720,7 @@ static void init_req(httpd_req_t *r, httpd_config_t *config)
     r->handle = 0;
     r->method = 0;
     memset((char*)r->uri, 0, sizeof(r->uri));
+    memset((char*)r->version, 0, sizeof(r->version));
     r->content_len = 0;
     r->aux = 0;
     r->user_ctx = 0;
@@ -728,6 +741,7 @@ static void init_req_aux(struct httpd_req_aux *ra, httpd_config_t *config)
     ra->req_hdrs_count = 0;
     ra->resp_hdrs_count = 0;
     ra->chunk_ctx = NULL;
+    memset(ra->connection_hdr, 0, sizeof(ra->connection_hdr));
 #if CONFIG_HTTPD_WS_SUPPORT
     ra->ws_handshake_detect = false;
 #endif
@@ -1085,60 +1099,46 @@ esp_err_t httpd_req_get_hdr_value_str(httpd_req_t *r, const char *field, char *v
     }
 
     struct httpd_req_aux *ra = r->aux;
-    const char   *hdr_ptr = ra->scratch;         /*!< Request headers are kept in scratch buffer */
-    unsigned     count    = ra->req_hdrs_count;  /*!< Count set during parsing  */
-    const size_t buf_len  = val_size;
+    const char *current = ra->scratch;  /*!< Start of headers in scratch buffer */
 
-    while (count--) {
-        /* Search for the ':' character. Else, it would mean
-         * that the field is invalid
-         */
-        const char *val_ptr = strchr(hdr_ptr, ':');
+    for (int i = 0; i < ra->req_hdrs_count; i++) {
+        /* Find the ':' character in the header */
+        const char *val_ptr = strchr(current, ':');
         if (!val_ptr) {
-            break;
+            return ESP_ERR_NOT_FOUND;
         }
 
-        /* If the field, does not match, continue searching.
-         * Compare lengths first as field from header is not
-         * null terminated (has ':' in the end).
-         */
-        if ((val_ptr - hdr_ptr != strlen(field)) ||
-            (strncasecmp(hdr_ptr, field, strlen(field)))) {
-            if (count) {
-                /* Jump to end of header field-value string */
-                hdr_ptr = 1 + strchr(hdr_ptr, '\0');
+        /* Check if this header matches the requested field */
+        size_t hdr_len = val_ptr - current;
+        if (hdr_len == strlen(field) &&
+            strncasecmp(current, field, hdr_len) == 0) {
+            /* Found matching header */
 
-                /* Skip all null characters (with which the line
-                 * terminators had been overwritten) */
-                while (*hdr_ptr == '\0') {
-                    hdr_ptr++;
-                }
-            }
-            continue;
-        }
-
-        /* Skip ':' */
-        val_ptr++;
-
-        /* Skip preceding space */
-        while ((*val_ptr != '\0') && (*val_ptr == ' ')) {
+            /* Skip ':' and leading spaces */
             val_ptr++;
+            while (*val_ptr && *val_ptr == ' ') {
+                val_ptr++;
+            }
+
+            /* Copy the null-terminated value to caller's buffer */
+            strlcpy(val, val_ptr, val_size);
+            val[val_size - 1] = '\0';
+
+            /* Check if buffer was large enough */
+            size_t len_needed = strlen(val_ptr) + 1;
+            if (val_size < len_needed) {
+                return ESP_ERR_HTTPD_RESULT_TRUNC;
+            }
+            return ESP_OK;
         }
 
-        /* Get the NULL terminated value and copy it to the caller's buffer. */
-        strlcpy(val, val_ptr, buf_len);
-        val[buf_len-1] = '\0';
-
-
-        /* Update value length, including one byte for null */
-        val_size = strlen(val_ptr) + 1;
-
-        /* If buffer length is smaller than needed, return truncation error */
-        if (buf_len < val_size) {
-            return ESP_ERR_HTTPD_RESULT_TRUNC;
+        /* Move to next header: skip current header value and null terminators */
+        current = strchr(current, '\0') + 1;
+        while (*current == '\0') {
+            current++;
         }
-        return ESP_OK;
     }
+
     return ESP_ERR_NOT_FOUND;
 }
 

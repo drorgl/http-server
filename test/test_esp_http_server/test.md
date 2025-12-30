@@ -29,7 +29,6 @@ Categories are organized by functional areas to improve maintainability and enab
 | Security | `test_security.cpp` | Security vulnerabilities, injections (RFC 9112) |
 | Transfer Encoding | `test_chunked_*.cpp` | Chunked request/response parsing (RFC 9112) |
 | Specialized Cases | Various `test_*.cpp` | Empty headers, leftover data, session context |
-| Connection Middleware | `test_connection_middleware_basic.cpp` | Connection-level middleware functionality |
 
 ### Category Selection Guidelines
 - Choose existing categories first when functionality clearly maps to a category
@@ -60,8 +59,7 @@ test_esp_http_server()                    # Global runner (test_esp_http_server.
 ├── test_http_methods()                 # HTTP method support tests
 ├── test_chunked_response()             # Chunked response tests
 ├── test_chunked_request_parsing()      # Chunked request parsing tests
-├── test_websocket_extensions_*()       # WebSocket extension tests
-└── test_connection_middleware_basic() # Connection middleware tests
+└── test_websocket_extensions_*()       # WebSocket extension tests
 ```
 
 ## Implementation Guidelines

@@ -11,6 +11,7 @@
 #include <stdbool.h>
 
 #include "http_server.h"
+#include "httpd_connection.h"
 #include "httpd_chunked.h"
 
 #ifdef ESP_PLATFORM
@@ -78,9 +79,11 @@ struct sock_db {
     void *ctx;                              /*!< A custom context for this socket */
     bool ignore_sess_ctx_changes;           /*!< Flag indicating if session context changes should be ignored */
     void *transport_ctx;                    /*!< A custom 'transport' context for this socket, to be used by send/recv/pending */
+    httpd_connection_ctx_t *connection_ctx;/*!< Connection persistence context for this socket */
     httpd_handle_t handle;                  /*!< Server handle */
     httpd_free_ctx_fn_t free_ctx;      /*!< Function for freeing the context */
     httpd_free_ctx_fn_t free_transport_ctx; /*!< Function for freeing the 'transport' context */
+    httpd_free_ctx_fn_t free_connection_ctx; /*!< Function for freeing the connection context */
     httpd_send_func_t send_fn;              /*!< Send function for this socket */
     httpd_recv_func_t recv_fn;              /*!< Receive function for this socket */
     httpd_pending_func_t pending_fn;        /*!< Pending function for this socket */
@@ -116,6 +119,7 @@ struct httpd_req_aux {
         char *field;
         char *value;
     } *resp_hdrs;                                   /*!< Additional headers in response packet */
+    char connection_hdr[64];                        /*!< Connection header parsed during request */
     struct http_parser_url url_parse_res;           /*!< URL parsing result, used for retrieving URL elements */
 
     httpd_chunked_ctx_t *chunk_ctx;                  /*!< Chunked context for Transfer-Encoding support */

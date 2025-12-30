@@ -26,6 +26,7 @@
 #endif
 
 #include "esp_httpd_priv.h"
+#include "httpd_connection.h"
 #include <log.h>
 
 
@@ -74,36 +75,45 @@ void httpd_sess_enum(struct httpd_data *hd, httpd_session_enum_function enum_fun
 // Check if a FD is valid
 static int fd_is_valid(int fd)
 {
+    int result;
 #ifdef _WIN32
     // 1. Check for the general INVALID_SOCKET value (like -1 on Unix)
     if (fd == (int)INVALID_SOCKET) {
+        LOGD(TAG, "fd_is_valid: fd=%d, result=0 (INVALID_SOCKET)", fd);
         return 0; // Not valid
     }
 
     // 2. Attempt a non-destructive socket operation
     int error = 0;
     int len = sizeof(error);
-    
+
     // getsockopt will fail on an invalid socket handle.
-    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == SOCKET_ERROR) 
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (char*)&error, &len) == SOCKET_ERROR)
     {
         // On failure, check the specific Windows Sockets error code.
         int wsa_error = WSAGetLastError();
-        
-        // WSAENOTSOCK (10038) is the Winsock error for "Socket operation on non-socket," 
+
+        // WSAENOTSOCK (10038) is the Winsock error for "Socket operation on non-socket,"
         // which is the closest Windows equivalent to EBADF (Bad File Descriptor).
         if (wsa_error == WSAENOTSOCK) {
+            LOGD(TAG, "fd_is_valid: fd=%d, result=0 (WSAENOTSOCK=%d)", fd, wsa_error);
             return 0; // Definitely not a socket/valid file descriptor
         }
 
-        // If it fails for another reason, the socket *handle* itself might still be valid, 
+        // If it fails for another reason, the socket *handle* itself might still be valid,
         // but the socket might be in an error state (which SO_ERROR would report).
         // Since we are checking handle validity, we return true for other errors.
+        result = 1;
+    } else {
+        result = 1;
     }
 
-    return 1; // Considered valid (handle exist
+    LOGD(TAG, "fd_is_valid: fd=%d, result=%d", fd, result);
+    return result;
 #else
-    return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+    result = fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+    LOGD(TAG, "fd_is_valid: fd=%d, result=%d, errno=%d", fd, result, errno);
+    return result;
 #endif
 }
 
@@ -119,6 +129,7 @@ static int enum_function(struct sock_db *session, void *context)
     case HTTPD_TASK_INIT:
         session->fd = -1;
         session->ctx = NULL;
+        session->connection_ctx = NULL;
         session->for_async_req = false;
         session->close_after_async_complete = false;
         break;
@@ -141,9 +152,13 @@ static int enum_function(struct sock_db *session, void *context)
     // Set descriptor
     case HTTPD_TASK_SET_DESCRIPTOR:
         if (session->fd != -1 && !session->for_async_req) {
-            FD_SET(session->fd, ctx->fdset);
-            if (session->fd > ctx->max_fd) {
-                ctx->max_fd = session->fd;
+            if (fd_is_valid(session->fd)) {
+                FD_SET(session->fd, ctx->fdset);
+                if (session->fd > ctx->max_fd) {
+                    ctx->max_fd = session->fd;
+                }
+            } else {
+                LOGW(TAG, "Skipping invalid fd %d in set_descriptors", session->fd);
             }
         }
         break;
@@ -273,6 +288,12 @@ esp_err_t httpd_sess_new(struct httpd_data *hd, int newfd)
         }
     }
 
+    // Initialize HTTP/1.1 connection persistence context
+    if (httpd_connection_init(hd, session->fd) != ESP_OK) {
+        LOGE(TAG, LOG_FMT("connection context initialization failed for fd = %d"), newfd);
+        httpd_sess_delete(hd, session);
+        return ESP_FAIL;
+    }
 
     LOGD(TAG, LOG_FMT("active sockets: %d"), hd->hd_sd_active_count);
     return ESP_OK;
@@ -293,7 +314,7 @@ void httpd_sess_free_ctx(void **ctx, httpd_free_ctx_fn_t free_fn)
 
 void httpd_sess_clear_ctx(struct sock_db *session)
 {
-    if ((!session) || ((!session->ctx) && (!session->transport_ctx))) {
+    if ((!session) || ((!session->ctx) && (!session->transport_ctx) && (!session->connection_ctx))) {
         return;
     }
 
@@ -301,6 +322,12 @@ void httpd_sess_clear_ctx(struct sock_db *session)
     if (session->ctx) {
         httpd_sess_free_ctx(&session->ctx, session->free_ctx);
         session->free_ctx = NULL;
+    }
+
+    // Free connection context
+    if (session->connection_ctx) {
+        httpd_sess_free_ctx((void**)&session->connection_ctx, session->free_connection_ctx);
+        session->free_connection_ctx = NULL;
     }
 
     // Free 'transport' context
@@ -396,11 +423,13 @@ void httpd_sess_set_descriptors(struct httpd_data *hd, fd_set *fdset, int *maxfd
 
 void httpd_sess_delete_invalid(struct httpd_data *hd)
 {
+    LOGD(TAG, "httpd_sess_delete_invalid: entry, active_count=%u", hd->hd_sd_active_count);
     enum_context_t context = {
         .task = HTTPD_TASK_DELETE_INVALID,
         .hd = hd
     };
     httpd_sess_enum(hd, enum_function, &context);
+    LOGD(TAG, "httpd_sess_delete_invalid: exit, active_count=%u", hd->hd_sd_active_count);
 }
 
 void httpd_sess_delete(struct httpd_data *hd, struct sock_db *session)
@@ -480,13 +509,31 @@ esp_err_t httpd_sess_process(struct httpd_data *hd, struct sock_db *session)
         return ESP_FAIL;
     }
 
-    // Check if client requested connection close
-    char conn_hdr[64];
-    bool close_connection = false;
-    if (httpd_req_get_hdr_value_str(&hd->hd_req, "Connection", conn_hdr, sizeof(conn_hdr)) == ESP_OK &&
-        strcasecmp(conn_hdr, "close") == 0) {
-        close_connection = true;
+    // Get the HTTP version and Connection header for connection persistence
+    const char *http_version = hd->hd_req.version;
+    const char *connection_value = ((struct httpd_req_aux *)hd->hd_req.aux)->connection_hdr;
+
+    // Fall back to trying to get Connection header value if not stored during parsing
+    if (!connection_value || connection_value[0] == '\0') {
+        char conn_hdr[64] = {0};
+        esp_err_t hdr_result = httpd_req_get_hdr_value_str(&hd->hd_req, "Connection",
+                                                         conn_hdr, sizeof(conn_hdr));
+        if (hdr_result == ESP_OK) {
+            connection_value = conn_hdr;
+        }
     }
+
+    // Process HTTP/1.1 connection persistence headers
+    esp_err_t conn_result = httpd_connection_process_headers(hd, session->fd,
+                                                           http_version, connection_value);
+    if (conn_result != ESP_OK) {
+        LOGW(TAG, "Failed to process connection headers for fd=%d", session->fd);
+        httpd_req_delete(hd);
+        return ESP_FAIL;
+    }
+
+    // Increment request counter and update timestamp
+    httpd_connection_increment_request_count(hd, session->fd);
 
     LOGD(TAG, LOG_FMT("httpd_req_delete"));
     if (httpd_req_delete(hd) != ESP_OK) {
@@ -496,14 +543,43 @@ esp_err_t httpd_sess_process(struct httpd_data *hd, struct sock_db *session)
     LOGD(TAG, LOG_FMT("success"));
     session->lru_counter = ++hd->lru_counter;
 
-    // Handle connection close based on async status
-    if (session->for_async_req) {
-        if (close_connection) {
+    // Update connection timestamp
+    httpd_connection_update_timestamp(hd, session->fd);
+
+    // Check if connection should be closed after this response
+    if (httpd_connection_should_close_after_response(hd, session->fd)) {
+        LOGD(TAG, "Connection fd=%d marked for closure after response", session->fd);
+        // For async requests, the existing logic will handle the close
+        if (session->for_async_req) {
             session->close_after_async_complete = true;
+        } else {
+            // For synchronous requests, close immediately if not persistent
+            if (!httpd_connection_should_persist(hd, session->fd)) {
+                httpd_sess_delete(hd, session);
+            }
+        }
+    } else if (!httpd_connection_should_persist(hd, session->fd)) {
+        // Connection is not persistent (e.g., client sent "Connection: close"), close immediately
+        LOGD(TAG, "Connection fd=%d is not persistent, closing after response", session->fd);
+        if (session->for_async_req) {
+            session->close_after_async_complete = true;
+        } else {
+            httpd_sess_delete(hd, session);
         }
     } else {
-        if (close_connection) {
-            httpd_sess_delete(hd, session);
+        // Legacy handling: close connection when client explicitly requests it
+        bool legacy_close_request = connection_value &&
+                                   strcasecmp(connection_value, "close") == 0;
+
+        // Handle connection close based on async status
+        if (session->for_async_req) {
+            if (legacy_close_request) {
+                session->close_after_async_complete = true;
+            }
+        } else {
+            if (legacy_close_request) {
+                httpd_sess_delete(hd, session);
+            }
         }
     }
 

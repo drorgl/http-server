@@ -14,10 +14,10 @@
 #include <log.h>
 #include "esp_httpd_priv.h"
 #include "http_server.h"
-#include <http_server_middleware.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <malloc.h>
+#include "httpd_connection.h"
 
 static const char *TAG = "httpd_uri";
 
@@ -242,11 +242,6 @@ esp_err_t httpd_unregister_uri_handler(httpd_handle_t handle,
             (strcmp(hd->hd_calls[i]->uri, uri) == 0)) {  // Then match URI string
             LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
 
-            // Clean up wrapped handler context if this is a wrapped handler
-            if (httpd_is_wrapped_handler(hd->hd_calls[i])) {
-                httpd_free_wrapped_ctx(hd->hd_calls[i]->user_ctx);
-            }
-
             free((char*)hd->hd_calls[i]->uri);
             free(hd->hd_calls[i]);
             hd->hd_calls[i] = NULL;
@@ -285,11 +280,6 @@ esp_err_t httpd_unregister_uri(httpd_handle_t handle, const char *uri)
         if (strcmp(hd->hd_calls[i]->uri, uri) == 0) {   // Match URI strings
             LOGD(TAG, LOG_FMT("[%d] removing %s"), i, uri);
 
-            // Clean up wrapped handler context if this is a wrapped handler
-            if (httpd_is_wrapped_handler(hd->hd_calls[i])) {
-                httpd_free_wrapped_ctx(hd->hd_calls[i]->user_ctx);
-            }
-
             free((char*)hd->hd_calls[i]->uri);
             free(hd->hd_calls[i]);
             hd->hd_calls[i] = NULL;
@@ -320,11 +310,6 @@ void httpd_unregister_all_uri_handlers(struct httpd_data *hd)
             continue;
         }
         LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
-
-        // Clean up wrapped handler context if this is a wrapped handler
-        if (httpd_is_wrapped_handler(hd->hd_calls[i])) {
-            httpd_free_wrapped_ctx(hd->hd_calls[i]->user_ctx);
-        }
 
         free((char*)hd->hd_calls[i]->uri);
         free(hd->hd_calls[i]);
@@ -381,6 +366,9 @@ esp_err_t httpd_uri(struct httpd_data *hd)
         aux->sd->ws_handler = uri->handler;
         aux->sd->ws_control_frames = uri->handle_ws_control_frames;
         aux->sd->ws_user_ctx = uri->user_ctx;
+
+        /* Mark connection as WebSocket for connection persistence */
+        httpd_connection_mark_websocket(hd, aux->sd->fd);
     }
 #endif
 
