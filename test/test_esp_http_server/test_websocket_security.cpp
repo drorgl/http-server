@@ -1071,7 +1071,7 @@ esp_err_t ws_session_fixation_handler(httpd_req_t *req)
 
                         // Send success response with new session token
                         char response[128];
-                        snprintf(response, sizeof(response), "AUTH_SUCCESS:%u:%s",
+                        snprintf(response, sizeof(response), "AUTH_SUCCESS:%"PRIu32":%s",
                                ctx->session_token, is_admin ? "ADMIN" : "GUEST");
 
                         httpd_ws_frame_t response_frame = {
@@ -1105,7 +1105,7 @@ esp_err_t ws_session_fixation_handler(httpd_req_t *req)
         } else if (strncmp(payload_str, "SESSION:", 8) == 0) {
             // Check if user knows the current valid session token
             uint32_t provided_token;
-            if (sscanf(payload_str + 8, "%u", &provided_token) == 1) {
+            if (sscanf(payload_str + 8, "%" PRIu32, &provided_token) == 1) {
                 if (provided_token == ctx->session_token) {
                     const char *valid_msg = "SESSION_VALID";
                     httpd_ws_frame_t valid_frame = {
@@ -1246,14 +1246,14 @@ void given_websocket_session_fixation_attempt_then_session_refreshed(void)
     TEST_ASSERT_TRUE(strncmp(auth_response, "AUTH_SUCCESS:", 13) == 0);
 
     // Parse: AUTH_SUCCESS:<token>:<role>
-    int parsed = sscanf(auth_response, "AUTH_SUCCESS:%u:%15s", &authenticated_token, role);
+    int parsed = sscanf(auth_response, "AUTH_SUCCESS:%"PRIu32":%15s", &authenticated_token, role);
     TEST_ASSERT_EQUAL(2, parsed); // Should parse token and role
     TEST_ASSERT_TRUE(authenticated_token != 0); // Should have valid token
     TEST_ASSERT_EQUAL_STRING("ADMIN", role); // Should be admin
 
     // Now test that this session token is valid
     char session_check[32];
-    snprintf(session_check, sizeof(session_check), "SESSION:%u", authenticated_token);
+    snprintf(session_check, sizeof(session_check), "SESSION:%"PRIu32, authenticated_token);
     uint8_t session_frame[64];
     session_frame[0] = 0x81; // FIN=1, opcode=TEXT
     session_frame[1] = 0x80 | (uint8_t)strlen(session_check); // Mask bit=1, length
@@ -1283,7 +1283,7 @@ void given_websocket_session_fixation_attempt_then_session_refreshed(void)
     // Try to use an old/invalid session token (simulate attacker knowledge)
     uint32_t fake_token = authenticated_token - 1; // Predictably wrong token
     char fixation_check[32];
-    snprintf(fixation_check, sizeof(fixation_check), "SESSION:%u", fake_token);
+    snprintf(fixation_check, sizeof(fixation_check), "SESSION:%"PRIu32, fake_token);
 
     uint8_t fixation_frame[64];
     fixation_frame[0] = 0x81; // FIN=1, opcode=TEXT

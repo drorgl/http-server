@@ -231,7 +231,7 @@ esp_err_t httpd_connection_increment_request_count(httpd_handle_t hd, int sockfd
 
     ctx->request_count++;
     ctx->last_request_at = time(NULL);
-    LOGD(TAG, "Request count for fd=%d now %u", sockfd, ctx->request_count);
+    LOGD(TAG, "Request count for fd=%d now %" PRIu32, sockfd, ctx->request_count);
     return ESP_OK;
 }
 
@@ -265,7 +265,7 @@ bool httpd_connection_exceeded_limits(httpd_handle_t hd, int sockfd)
     // Check maximum requests per connection limit
     if (hd_data->config.connection_config.max_requests_per_conn > 0 &&
         ctx->request_count > hd_data->config.connection_config.max_requests_per_conn) {
-        LOGD(TAG, "Connection fd=%d exceeded max requests per connection (%u > %u)",
+        LOGD(TAG, "Connection fd=%d exceeded max requests per connection (%"PRIu32" > %"PRIu32")",
              sockfd, ctx->request_count, hd_data->config.connection_config.max_requests_per_conn);
         return true;
     }
@@ -275,8 +275,8 @@ bool httpd_connection_exceeded_limits(httpd_handle_t hd, int sockfd)
         time_t now = time(NULL);
         time_t idle_time = now - ctx->last_request_at;
         if (idle_time >= hd_data->config.connection_config.max_idle_sec) {
-            LOGD(TAG, "Connection fd=%d exceeded max idle timeout (%ld >= %u seconds)",
-                 sockfd, idle_time, hd_data->config.connection_config.max_idle_sec);
+            LOGD(TAG, "Connection fd=%d exceeded max idle timeout (%lld >= %"PRIu32" seconds)",
+                 sockfd, (long long)idle_time, hd_data->config.connection_config.max_idle_sec);
             return true;
         }
     }
@@ -286,8 +286,8 @@ bool httpd_connection_exceeded_limits(httpd_handle_t hd, int sockfd)
         time_t now = time(NULL);
         time_t lifetime = now - ctx->created_at;
         if (lifetime >= hd_data->config.connection_config.max_lifetime_sec) {
-            LOGD(TAG, "Connection fd=%d exceeded max lifetime (%ld >= %u seconds)",
-                 sockfd, lifetime, hd_data->config.connection_config.max_lifetime_sec);
+            LOGD(TAG, "Connection fd=%d exceeded max lifetime (%lld >= %"PRIu32" seconds)",
+                 sockfd, (long long)lifetime, hd_data->config.connection_config.max_lifetime_sec);
             return true;
         }
     }

@@ -16,14 +16,6 @@ static bool default_uri_match_wildcard(const char *uri_template, const char *uri
     return strncmp(uri_template, uri, template_len) == 0;
 }
 
-/**
- * @brief Context structure for wrapped handlers
- */
-typedef struct wrapped_handler_ctx {
-    const httpd_uri_t *original_uri;           /**< Original URI handler */
-    httpd_middleware_config_t *configs;        /**< Array of middleware configs */
-    size_t num_configs;                        /**< Number of configs */
-} wrapped_handler_ctx_t;
 
 /**
  * @brief Wrapped handler function that executes middleware chain
@@ -33,7 +25,7 @@ static esp_err_t wrapped_handler(httpd_req_t *req)
     // GUARD RAIL: Add basic request validation to detect corruption
     // Added in response to Range middleware issues where request structure
     // may be corrupted by previous operations
-    if (!req || !req->uri || strlen(req->uri) == 0) {
+    if (!req || strlen(req->uri) == 0) {
         LOGE(TAG, "Wrapped handler: Invalid request structure detected");
         return ESP_FAIL;
     }

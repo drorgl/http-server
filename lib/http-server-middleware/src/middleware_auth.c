@@ -43,7 +43,7 @@ esp_err_t middleware_auth(httpd_req_t *req, const httpd_uri_t *uri, void *ctx)
 
     // Decode the base64 credentials
     char decoded[128];
-    size_t decoded_len = base64_decode((const unsigned char *)(auth_buf + 6), strlen(auth_buf + 6), (unsigned char *)decoded, sizeof(decoded));
+    size_t decoded_len = base64_decode((const char *)(auth_buf + 6), strlen(auth_buf + 6), (unsigned char *)decoded, sizeof(decoded));
     if (decoded_len == 0) {
         // Invalid base64
         config->resp_set_status(req, HTTP_STATUS_401_UNAUTHORIZED);

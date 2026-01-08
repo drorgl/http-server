@@ -22,7 +22,7 @@ typedef struct httpd_quality_value {
  * @brief Accept header range with quality value
  */
 typedef struct httpd_accept_range {
-    char *range;                     /**< Media range (e.g., "text/plain", "*\/*") */
+    char *range;                     /**< Media range (e.g., "text/plain", "* / *") */
     httpd_quality_value_t quality;   /**< Associated quality value */
     char *parameters;                /**< Media type parameters if any */
     struct httpd_accept_range *next; /**< Linked list for multiple ranges */

@@ -386,7 +386,7 @@ static esp_err_t parse_etag_list(const char *header_value, char etags[][HTTPD_MA
     // Parse comma-separated ETags
     while (*ptr && *etag_count < max_etags) {
         // Skip whitespace
-        while (*ptr && isspace(*ptr)) ptr++;
+        while (*ptr && isspace((unsigned int)*ptr)) ptr++;
 
         if (!*ptr) break;
 
@@ -401,10 +401,10 @@ static esp_err_t parse_etag_list(const char *header_value, char etags[][HTTPD_MA
             const char *etag_end = start + len - 1;
 
             // Trim leading whitespace
-            while (etag_start <= etag_end && isspace(*etag_start)) etag_start++;
+            while (etag_start <= etag_end && isspace((unsigned int)*etag_start)) etag_start++;
 
             // Trim trailing whitespace
-            while (etag_end > etag_start && isspace(*etag_end)) etag_end--;
+            while (etag_end > etag_start && isspace((unsigned int)*etag_end)) etag_end--;
 
             size_t etag_len = etag_end - etag_start + 1;
             if (etag_len > 0 && etag_len < HTTPD_MAX_ETAG_LEN) {

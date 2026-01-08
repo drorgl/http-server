@@ -73,16 +73,16 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
     const char *ptr = range_str;
 
     // Skip whitespace
-    while (*ptr && isspace(*ptr)) ptr++;
+    while (*ptr && isspace((unsigned int)*ptr)) ptr++;
 
     // Check for single number (suffix-byte-range)
     if (*ptr == '-') {
         // Suffix range: -<suffix-length>
         ptr++;
         // Skip whitespace
-        while (*ptr && isspace(*ptr)) ptr++;
+        while (*ptr && isspace((unsigned char)*ptr)) ptr++;
 
-        if (!*ptr || !isdigit(*ptr)) {
+        if (!*ptr || !isdigit((unsigned char)*ptr)) {
             return false;
         }
 
@@ -90,7 +90,7 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
         long long suffix_len = strtoll(ptr, &endptr, 10);
 
         // Check for conversion errors and valid range
-        if (*endptr != '\0' && !isspace(*endptr)) {
+        if (*endptr != '\0' && !isspace((unsigned int)*endptr)) {
             return false;
         }
 
@@ -106,7 +106,7 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
     }
 
     // Parse first number (start position)
-    if (!isdigit(*ptr)) {
+    if (!isdigit((unsigned char)*ptr)) {
         return false;
     }
 
@@ -115,7 +115,7 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
     ptr = endptr;
 
     // Skip whitespace
-    while (*ptr && isspace(*ptr)) ptr++;
+    while (*ptr && isspace((unsigned char)*ptr)) ptr++;
 
     if (*ptr != '-') {
         return false;
@@ -123,9 +123,9 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
     ptr++;
 
     // Skip whitespace
-    while (*ptr && isspace(*ptr)) ptr++;
+    while (*ptr && isspace((unsigned int)*ptr)) ptr++;
 
-    if (*ptr == '\0' || isspace(*ptr)) {
+    if (*ptr == '\0' || isspace((unsigned int)*ptr)) {
         // Open-ended range: <start>-
         spec->has_start = true;
         spec->has_end = false;
@@ -135,7 +135,7 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
     }
 
     // Parse second number (end position)
-    if (!isdigit(*ptr)) {
+    if (!isdigit((unsigned char)*ptr)) {
         return false;
     }
 
@@ -143,7 +143,7 @@ static bool parse_byte_range_spec(const char *range_str, httpd_range_spec_t *spe
     ptr = endptr;
 
     // Skip whitespace
-    while (*ptr && isspace(*ptr)) ptr++;
+    while (*ptr && isspace((unsigned char)*ptr)) ptr++;
 
     // Should be at end of string
     if (*ptr != '\0') {
@@ -176,10 +176,10 @@ static esp_err_t parse_range_header_value(const char *range_value, long long con
     const char *ptr = range_value;
 
     // Parse range unit (typically "bytes")
-    while (*ptr && isspace(*ptr)) ptr++;
+    while (*ptr && isspace((unsigned int)*ptr)) ptr++;
 
     const char *unit_start = ptr;
-    while (*ptr && !isspace(*ptr) && *ptr != '=') ptr++;
+    while (*ptr && !isspace((unsigned int)*ptr) && *ptr != '=') ptr++;
 
     if (*ptr != '=') {
         return ESP_ERR_INVALID_ARG;
@@ -236,10 +236,10 @@ static esp_err_t parse_range_header_value(const char *range_value, long long con
 
         // Trim whitespace
         char *trim_start = range_str;
-        while (*trim_start && isspace(*trim_start)) trim_start++;
+        while (*trim_start && isspace((unsigned int)*trim_start)) trim_start++;
 
         char *trim_end = range_str + range_len - 1;
-        while (trim_end > trim_start && isspace(*trim_end)) trim_end--;
+        while (trim_end > trim_start && isspace((unsigned int)*trim_end)) trim_end--;
         trim_end[1] = '\0';
 
         // Parse the range specification

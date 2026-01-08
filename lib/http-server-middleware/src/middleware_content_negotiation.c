@@ -47,7 +47,7 @@ static bool parse_quality_value(const char *q_str, httpd_quality_value_t *qualit
     }
 
     // Check if there are any remaining non-whitespace characters
-    while (*endptr && isspace(*endptr)) endptr++;
+    while (*endptr && isspace((unsigned char)*endptr)) endptr++;
     if (*endptr != '\0') {
         LOGD("content_negotiation", "parse_quality_value: trailing characters after number in '%s'", value_str);
         return false;
@@ -106,8 +106,8 @@ static bool parse_accept_range(const char *range_str, httpd_accept_range_t *rang
     const char *start = range_str;
     const char *end = range_str + range_len - 1;
 
-    while (start <= end && isspace(*start)) start++;
-    while (end >= start && isspace(*end)) end--;
+    while (start <= end && isspace((unsigned char)*start)) start++;
+    while (end >= start && isspace((unsigned char)*end)) end--;
 
     if (start > end) {
         LOGD("content_negotiation", "parse_accept_range: empty range after trimming");
@@ -168,9 +168,9 @@ httpd_accept_range_t* httpd_parse_accept_header(const char *header_value) {
 
     while (token) {
         // Trim leading/trailing whitespace
-        while (*token && isspace(*token)) token++;
+        while (*token && isspace((unsigned char)*token)) token++;
         char *end = token + strlen(token) - 1;
-        while (end >= token && isspace(*end)) {
+        while (end >= token && isspace((unsigned char)*end)) {
             *end = '\0';
             end--;
         }
@@ -229,7 +229,7 @@ void httpd_free_accept_ranges(httpd_accept_range_t *ranges) {
 /**
  * @brief Calculate specificity score per RFC 9110 Section 12.5.1
  *
- * @param media_range Media range string (e.g., "text/html", "text/*", "*\/*")
+ * @param media_range Media range string (e.g., "text/html", "text / *", "* / *")
  * @return Specificity score: 1000 (exact), 100 (type), 10 (universal)
  */
 static int calculate_specificity_score(const char *media_range) {

@@ -519,7 +519,7 @@ void given_ws_connection_when_sending_2_fragment_message_then_reassembled_correc
     // Wait for server to signal that response was sent
     LOGD(TAG, "TEST: Waiting for WS_FRAME_SENT_BIT signal, event_group=%p", ws_event_group);
     event_group_bits_t frame_bits = event_group_wait_bits(ws_event_group, WS_FRAME_SENT_BIT, false, true, TEST_TIMEOUT_MS);
-    LOGD(TAG, "TEST: Wait completed, frame_bits=0x%08x, expected_mask=0x%08x", frame_bits, WS_FRAME_SENT_BIT);
+    LOGD(TAG, "TEST: Wait completed, frame_bits=0x%08"PRIx32", expected_mask=0x%08"PRIx32, (uint32_t)frame_bits, (uint32_t)WS_FRAME_SENT_BIT);
     TEST_ASSERT_TRUE(frame_bits & WS_FRAME_SENT_BIT);
 
     // Receive and verify reassembled message

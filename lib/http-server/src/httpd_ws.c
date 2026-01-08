@@ -1342,7 +1342,7 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
     /* Prepare Tx buffer - maximum length is 14, which includes 2 bytes header, 8 bytes length, 4 bytes mask key */
     uint8_t tx_len = 0;
     uint8_t header_buf[10] = {0 };
-    LOGD(TAG, "httpd_ws_send_frame_async: Frame details - FD: %d, Final: %d, Fragmented: %d, Type: %d, Len: %lu",
+    LOGD(TAG, "httpd_ws_send_frame_async: Frame details - FD: %d, Final: %d, Fragmented: %d, Type: %d, Len: %zu",
          fd, frame->final, frame->fragmented, frame->type, frame->len);
     
     /* Set the `FIN` bit if the frame is final, then add the opcode */
@@ -1384,7 +1384,7 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
         LOGW(TAG, "Failed to send WS header. Ret: %d, FD: %d, Type: %d, Len: %d", header_send_ret, fd, frame->type, frame->len);
         return ESP_FAIL;
     }
-    LOGD(TAG, "Sent WS header. FD: %d, Type: %d, Len: %d (payload len: %lu)", fd, frame->type, tx_len, frame->len);
+    LOGD(TAG, "Sent WS header. FD: %d, Type: %d, Len: %d (payload len: %zu)", fd, frame->type, tx_len, frame->len);
 
     /* Send off payload */
     if(frame->len > 0 && frame->payload != NULL) {

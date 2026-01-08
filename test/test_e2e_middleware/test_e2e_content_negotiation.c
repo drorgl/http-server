@@ -7,8 +7,14 @@
 #include "http_test_client.h"
 #include "middleware_content_negotiation.h"
 
+#include <esp_httpd_priv.h>
+
 #ifdef _WIN32
 #include <windows.h>
+#endif
+
+#ifdef ESP_PLATFORM
+#include "port/esp32/osal.h"
 #endif
 
 // Define httpd_os_thread_sleep for native tests if not available

@@ -523,7 +523,7 @@ static bool is_valid_range_param(const char *param) {
 
     // Only allow digits and negative sign
     for (size_t i = 0; i < len; i++) {
-        if (!isdigit(param[i]) && param[i] != '-') {
+        if (!isdigit((unsigned char)param[i]) && param[i] != '-') {
             return false;
         }
     }

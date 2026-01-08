@@ -33,9 +33,9 @@ static esp_err_t parse_chunk_size(const char *line, size_t *size_out, size_t max
     const char *orig_line = line;
     while (*line && *line != ';') {
         uint8_t digit;
-        if (isdigit(*line)) {
+        if (isdigit((unsigned char)*line)) {
             digit = *line - '0';
-        } else if (isxdigit(*line)) {
+        } else if (isxdigit((unsigned char)*line)) {
             digit = tolower(*line) - 'a' + 10;
         } else {
             valid_hex = false;

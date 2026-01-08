@@ -51,7 +51,7 @@ bool validate_content_range_header(const char *content_range) {
             return false;
         }
         for (size_t i = 0; i < strlen(total_str); i++) {
-            if (!isdigit(total_str[i])) {
+            if (!isdigit((unsigned char)total_str[i])) {
                 return false;
             }
         }
@@ -71,7 +71,7 @@ bool validate_content_range_header(const char *content_range) {
         return false;
     }
     for (size_t i = 0; i < strlen(total_str); i++) {
-        if (!isdigit(total_str[i])) {
+        if (!isdigit((unsigned char)total_str[i])) {
             return false;
         }
     }
@@ -95,7 +95,7 @@ bool validate_content_range_header(const char *content_range) {
     for (size_t i = 0; i < strlen(range_copy); i++) {
         char c = range_copy[i];
         if (c == '-') continue;
-        if (!isdigit(c)) {
+        if (!isdigit((unsigned char)c)) {
             return false;
         }
     }

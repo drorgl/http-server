@@ -7,7 +7,7 @@
 #include "../../lib/base64/base64_codec.h"
 
 // Mocking support for Auth testing
-static char mock_auth_header[128] = "";
+static char mock_auth_header[512] = "";
 static esp_err_t mock_get_hdr_result = ESP_OK;
 
 static char mock_response_status_str[50] = "";
@@ -134,7 +134,7 @@ static void set_basic_auth_header(const char *username, const char *password) {
     char creds[128];
     snprintf(creds, sizeof(creds), "%s:%s", username, password);
     char encoded[256];
-    size_t encoded_len = base64_encode((const unsigned char *)creds, strlen(creds), (unsigned char *)encoded, sizeof(encoded));
+    size_t encoded_len = base64_encode((const unsigned char *)creds, strlen(creds), (char *)encoded, sizeof(encoded));
     snprintf(mock_auth_header, sizeof(mock_auth_header), "Basic %s", encoded);
 }
 
@@ -281,7 +281,7 @@ void test_auth_no_colon_in_credentials(void) {
     // Manual for no colon
     char creds_no_colon[] = "userpass";
     char encoded_no_colon[256];
-    base64_encode((const unsigned char *)creds_no_colon, strlen(creds_no_colon), (unsigned char *)encoded_no_colon, sizeof(encoded_no_colon));
+    base64_encode((const unsigned char *)creds_no_colon, strlen(creds_no_colon), (char *)encoded_no_colon, sizeof(encoded_no_colon));
     snprintf(mock_auth_header, sizeof(mock_auth_header), "Basic %s", encoded_no_colon);
 
     esp_err_t result = middleware_auth(&req, NULL, &config);
