@@ -1190,3 +1190,20 @@ http_test_client_err_t ws_test_client_recv_fragmented_message(
     *message_len = buffer_used;
     return HTTP_TEST_CLIENT_OK;
 }
+
+http_test_client_err_t ws_test_client_send_malformed_frame(
+    http_test_client_handle_t *client,
+    const uint8_t *malformed_data,
+    size_t data_len,
+    uint32_t timeout_ms
+) {
+    if (client == NULL || malformed_data == NULL || data_len == 0) {
+        return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
+    }
+    if (client->sockfd == -1) {
+        return HTTP_TEST_CLIENT_ERR_CONNECT;
+    }
+
+    // Send the raw malformed frame data directly
+    return send_data(client->sockfd, (const char*)malformed_data, data_len, timeout_ms);
+}

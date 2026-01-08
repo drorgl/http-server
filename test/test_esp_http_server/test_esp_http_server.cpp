@@ -77,10 +77,10 @@ int test_esp_http_server(){
         test_connection_persistence_e2e() + 
         test_connection_persistence() + 
         test_async_websocket() + 
-        test_websocket() + 
-        test_websocket_fragmentation() +
         test_error_handling() + 
-        test_websocket_security();
+        test_websocket_security() + 
+        test_websocket() +
+        test_websocket_fragmentation();
 }
 
 #ifdef __cplusplus

@@ -112,43 +112,30 @@ static esp_err_t ws_data_frame_handler(httpd_req_t *req)
     }
 
     httpd_ws_frame_t ws_pkt;
-    uint8_t *buf = NULL;
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT; // Default to text, will be updated by httpd_ws_recv_frame
 
-    // Get the frame length first
+    // Get frame and payload in single call (like fragmentation handler)
     esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
     if (ret != ESP_OK) {
-        LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
+        LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
         return ret;
     }
 
-    if (ws_pkt.len) {
-        buf = (uint8_t*)calloc(1, ws_pkt.len + 1); // +1 for null termination if text
-        if (buf == NULL) {
-            LOGE(TAG, "Failed to calloc memory for buf");
-            return ESP_ERR_NO_MEM;
-        }
-        ws_pkt.payload = buf;
-        // Get the frame payload
-        ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+    LOGD(TAG, "ws_data_frame_handler: received frame type=%d, len=%zu", ws_pkt.type, ws_pkt.len);
+
+    if (ws_pkt.len > 0 || ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
+        // Echo back the received frame (skip payload copy like fragmentation handler)
+        ret = httpd_ws_send_frame(req, &ws_pkt);
         if (ret != ESP_OK) {
-            LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
-            free(buf);
-            return ret;
+            LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
         }
-        // Null-terminate for text frames
-        if (ws_pkt.type == HTTPD_WS_TYPE_TEXT) {
-            buf[ws_pkt.len] = '\0';
+
+        // Free API allocated payload
+        if (ws_pkt.api_allocated_payload && ws_pkt.payload) {
+            free(ws_pkt.payload);
         }
     }
 
-    // Echo back the received frame
-    ret = httpd_ws_send_frame(req, &ws_pkt);
-    if (ret != ESP_OK) {
-        LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-    }
-    free(buf);
     return ret;
 }
 

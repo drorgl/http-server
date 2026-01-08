@@ -261,6 +261,21 @@ http_test_client_err_t ws_test_client_recv_fragmented_message(
     uint32_t timeout_ms
 );
 
+/**
+ * @brief Helper to send malformed frames for testing error conditions
+ * @param client Test client handle
+ * @param malformed_data Raw malformed frame data to send
+ * @param data_len Length of the malformed data
+ * @param timeout_ms Timeout for sending
+ * @return Success/error status
+ */
+http_test_client_err_t ws_test_client_send_malformed_frame(
+    http_test_client_handle_t *client,
+    const uint8_t *malformed_data,
+    size_t data_len,
+    uint32_t timeout_ms
+);
+
 #ifdef __cplusplus
 }
 #endif

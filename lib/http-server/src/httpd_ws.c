@@ -650,6 +650,10 @@ char *httpd_ws_build_extension_header(const ws_extension_t *extensions, size_t c
 static void httpd_ws_free_fragmentation_ctx(void *ctx)
 {
     if (ctx) {
+        ws_fragmentation_ctx_t *frag_ctx = (ws_fragmentation_ctx_t *)ctx;
+        if (frag_ctx->reassembled_buffer) {
+            free(frag_ctx->reassembled_buffer);
+        }
         free(ctx);
     }
 }
@@ -911,6 +915,105 @@ static esp_err_t httpd_ws_unmask_payload(uint8_t *payload, size_t len, const uin
     return ESP_OK;
 }
 
+/**
+ * @brief Validate UTF-8 encoding in a byte sequence
+ *
+ * Validates UTF-8 byte sequence according to RFC 3629.
+ * Returns ESP_OK if valid UTF-8, ESP_ERR_INVALID_ARG if invalid.
+ *
+ * @param data Pointer to the data to validate
+ * @param len Length of the data in bytes
+ * @return ESP_OK if valid UTF-8, ESP_ERR_INVALID_ARG otherwise
+ */
+esp_err_t httpd_ws_validate_utf8(const uint8_t *data, size_t len)
+{
+    if (!data || len == 0) {
+        return ESP_OK; /* Empty data is valid */
+    }
+
+    size_t i = 0;
+    while (i < len) {
+        uint8_t byte1 = data[i++];
+
+        /* Single byte ASCII character (0x00-0x7F) - RFC 3629 Section 1 */
+        if ((byte1 & 0x80) == 0x00) {
+            continue;
+        }
+
+        /* Invalid continuation byte in single byte position */
+        if ((byte1 & 0xC0) == 0x80) {
+            LOGD(TAG, "Invalid UTF-8: continuation byte without start byte at position %zu", i-1);
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        /* 2-byte sequence (0xC0-0xDF) */
+        if ((byte1 & 0xE0) == 0xC0) {
+            /* Overlong encoding or surrogate check - RFC 3629 Section 3 */
+            if ((byte1 & 0xFE) == 0xC0) {
+                LOGD(TAG, "Invalid UTF-8: overlong 2-byte encoding at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            if (i + 1 > len || (data[i] & 0xC0) != 0x80) {
+                LOGD(TAG, "Invalid UTF-8: incomplete or invalid 2-byte sequence at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            i += 1;
+            continue;
+        }
+
+        /* 3-byte sequence (0xE0-0xEF) */
+        if ((byte1 & 0xF0) == 0xE0) {
+            /* Overlong encoding and surrogate checks - RFC 3629 Section 3 */
+            if (byte1 == 0xE0 && (data[i] & 0xE0) == 0x80) {
+                LOGD(TAG, "Invalid UTF-8: overlong 3-byte encoding at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            /* U+D800 to U+DFFF surrogate check */
+            if (byte1 == 0xED && (data[i] & 0xE0) == 0xA0) {
+                LOGD(TAG, "Invalid UTF-8: surrogate character at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            if (i + 2 > len ||
+                (data[i] & 0xC0) != 0x80 ||
+                (data[i+1] & 0xC0) != 0x80) {
+                LOGD(TAG, "Invalid UTF-8: incomplete or invalid 3-byte sequence at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            i += 2;
+            continue;
+        }
+
+        /* 4-byte sequence (0xF0-0xF4) */
+        if ((byte1 & 0xF8) == 0xF0) {
+            /* Overlong encoding check */
+            if (byte1 == 0xF0 && (data[i] & 0xF0) == 0x80) {
+                LOGD(TAG, "Invalid UTF-8: overlong 4-byte encoding at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            /* RFC 3629 Section 3: 4-byte sequences range: U+10000 to U+10FFFF */
+            if (byte1 > 0xF4) {
+                LOGD(TAG, "Invalid UTF-8: out-of-range 4-byte sequence at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            if (i + 3 > len ||
+                (data[i] & 0xC0) != 0x80 ||
+                (data[i+1] & 0xC0) != 0x80 ||
+                (data[i+2] & 0xC0) != 0x80) {
+                LOGD(TAG, "Invalid UTF-8: incomplete or invalid 4-byte sequence at position %zu", i-1);
+                return ESP_ERR_INVALID_ARG;
+            }
+            i += 3;
+            continue;
+        }
+
+        /* Invalid start byte */
+        LOGD(TAG, "Invalid UTF-8: invalid start byte 0x%02X at position %zu", byte1, i-1);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return ESP_OK;
+}
+
 esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t max_len)
 {
     LOGD(TAG, "httpd_ws_recv_frame: Entry. max_len: %" NEWLIB_NANO_COMPAT_FORMAT, NEWLIB_NANO_COMPAT_CAST(max_len));
@@ -936,6 +1039,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         return ESP_ERR_INVALID_ARG;
     }
     ws_fragmentation_ctx_t *ws_frg_ctx = (ws_fragmentation_ctx_t *)sd->ws_fragment_ctx;
+    ws_fragmentation_ctx_t *frag_ctx = ws_frg_ctx;
 
     size_t current_frame_fragment_len = 0;
     if (frame->len != 0) {
@@ -1020,6 +1124,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
     frame->len = current_frame_fragment_len;
     frame->type = current_frame_type;
     frame->final = current_frame_final;
+    frame->api_allocated_payload = false;  // Initialize flag
 
     /* Handle fragmentation */
     if (ws_frg_ctx && ws_frg_ctx->in_fragmentation) {
@@ -1069,38 +1174,38 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         }
 
         // Validate fragment size limits to prevent DoS
-        if (current_frame_fragment_len > 4096) {
+        if (frag_ctx && current_frame_fragment_len > frag_ctx->buffer_size) {
             LOGD(TAG, LOG_FMT("Buffer overflow detected, sending close frame (status 1009)"));
             httpd_ws_frame_t close_frame = {
                 .final = true,
                 .fragmented = false,
                 .type = HTTPD_WS_TYPE_CLOSE,
-                .payload = (uint8_t[]){0x03, 0xE9},  // Status code 1009 (Message Too Big) in network byte order
+                .payload = (uint8_t[]){0x03, 0xF1},  // Status code 1009 (Message Too Big) in network byte order
                 .len = 2
             };
             httpd_ws_send_frame(req, &close_frame);
-            LOGW(TAG, LOG_FMT("Fragment too large: %"NEWLIB_NANO_COMPAT_FORMAT" bytes, max allowed: 4096"),
-                 NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len));
+            LOGW(TAG, LOG_FMT("Fragment too large: %"NEWLIB_NANO_COMPAT_FORMAT" bytes, max allowed: %"NEWLIB_NANO_COMPAT_FORMAT),
+                 NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len), NEWLIB_NANO_COMPAT_CAST(frag_ctx->buffer_size));
             ws_frg_ctx->in_fragmentation = false;
             ws_frg_ctx->reassembled_len = 0;
             return ESP_ERR_INVALID_SIZE;
         }
 
         // Check for buffer overflow before receiving payload
-        if ((ws_frg_ctx->reassembled_len + current_frame_fragment_len) > sizeof(ws_frg_ctx->reassembled_buffer)) {
+        if ((ws_frg_ctx->reassembled_len + current_frame_fragment_len) > frag_ctx->buffer_size) {
             LOGD(TAG, LOG_FMT("Buffer overflow detected, sending close frame (status 1009)"));
             httpd_ws_frame_t close_frame = {
                 .final = true,
                 .fragmented = false,
                 .type = HTTPD_WS_TYPE_CLOSE,
-                .payload = (uint8_t[]){0x03, 0xE9},  // Status code 1009 (Message Too Big) in network byte order
+                .payload = (uint8_t[]){0x03, 0xF1},  // Status code 1009 (Message Too Big) in network byte order
                 .len = 2
             };
             httpd_ws_send_frame(req, &close_frame);
             LOGW(TAG, LOG_FMT("Reassembly buffer overflow! Size: %"NEWLIB_NANO_COMPAT_FORMAT", current frame: %"NEWLIB_NANO_COMPAT_FORMAT", max: %"NEWLIB_NANO_COMPAT_FORMAT),
                  NEWLIB_NANO_COMPAT_CAST(ws_frg_ctx->reassembled_len),
                  NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len),
-                 NEWLIB_NANO_COMPAT_CAST(sizeof(ws_frg_ctx->reassembled_buffer)));
+                 NEWLIB_NANO_COMPAT_CAST(frag_ctx->buffer_size));
             ws_frg_ctx->in_fragmentation = false; // Reset state
             ws_frg_ctx->reassembled_len = 0;
             return ESP_ERR_INVALID_SIZE; // Or appropriate error for buffer overflow
@@ -1161,14 +1266,8 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         }
 
         /* We only accept the incoming packet length that is smaller than the max_len (or it will overflow the buffer!) */
-        /* If max_len is 0, regard it OK for userspace to get frame len */
-        if (current_frame_fragment_len > max_len) {
-            if (max_len == 0) {
-                LOGD(TAG, "regard max_len == 0 is OK for user to get frame len");
-                // However, we still need to consume the payload if max_len == 0 and frame->len > 0
-                // httpd_ws_recv_frame is used to both *get* the frame header and *receive* the payload
-                return ESP_OK; // Indicate header is parsed, payload should be read by caller
-            }
+        /* If max_len is 0 and frame->payload is NULL, API will allocate buffer for payload */
+        if (current_frame_fragment_len > max_len && (max_len != 0 || frame->payload != NULL)) {
             LOGW(TAG, LOG_FMT("WS Message too long"));
             return ESP_ERR_INVALID_SIZE;
         }
@@ -1181,8 +1280,12 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         }
 
         if (frame->payload == NULL) {
-            LOGW(TAG, LOG_FMT("Payload buffer is null"));
-            return ESP_FAIL;
+            frame->payload = (uint8_t *)malloc(current_frame_fragment_len + 1);
+            if (!frame->payload) {
+                LOGE(TAG, LOG_FMT("Failed to allocate payload buffer for WebSocket frame"));
+                return ESP_ERR_NO_MEM;
+            }
+            frame->api_allocated_payload = true;
         }
 
         size_t left_len = current_frame_fragment_len;
@@ -1314,6 +1417,16 @@ esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
             LOGE(TAG, LOG_FMT("Failed to allocate WS fragmentation context"));
             return ESP_ERR_NO_MEM;
         }
+        // Allocate dynamic buffer for fragmentation
+        ws_fragmentation_ctx_t *frag_ctx = (ws_fragmentation_ctx_t *)sd->ws_fragment_ctx;
+        size_t buf_size = ((struct httpd_data *)req->handle)->config.ws_max_fragment_size;
+        frag_ctx->reassembled_buffer = malloc(buf_size);
+        if (!frag_ctx->reassembled_buffer) {
+            LOGE(TAG, LOG_FMT("Failed to allocate WS fragmentation buffer"));
+            free(sd->ws_fragment_ctx);
+            return ESP_ERR_NO_MEM;
+        }
+        frag_ctx->buffer_size = buf_size;
         // Store the context pointer and set a free function to clean it up when the session closes
         httpd_sess_set_ctx(req->handle, httpd_req_to_sockfd(req), sd->ws_fragment_ctx, httpd_ws_free_fragmentation_ctx);
     }

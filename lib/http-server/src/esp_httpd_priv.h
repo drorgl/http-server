@@ -68,8 +68,9 @@ extern "C" {
  * @brief WebSocket fragmentation context for reassembling fragmented messages
  */
 typedef struct {
-    char reassembled_buffer[4096];    /*!< 4KB reassembly buffer */
-    size_t reassembled_len;           /*!< Current buffer usage */
+    char *reassembled_buffer;        /*!< Dynamically allocated reassembly buffer */
+    size_t buffer_size;              /*!< Size of the buffer */
+    size_t reassembled_len;          /*!< Current buffer usage */
     bool in_fragmentation;           /*!< Fragmentation state flag */
     uint8_t message_type;            /*!< Original opcode of the first fragment in a fragmented message */
 } ws_fragmentation_ctx_t;

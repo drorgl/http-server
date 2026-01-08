@@ -997,17 +997,18 @@ Based on analysis of RFC 6455 and the current test suite, several major WebSocke
   - Invalid control frame handling
 
 #### 5. **Error Handling & Status Codes** (Section 7.4)
-**Status**: **NOT TESTED**
+**Status**: ✅ **FULLY TESTED**
 - **Feature**: 16 defined WebSocket close status codes
-- **Implementation**: Status code support exists
-- **Missing Tests**:
-  - Protocol error (1002)
-  - Unsupported data (1003)
-  - Policy violation (1008)
-  - Message too big (1009)
-  - Extension not supported (1010)
-  - Server error (1011)
-  - TLS handshake failure (1015)
+- **Implementation**: Complete status code support with RFC 6455 Section 7.4 compliance
+- **Test Coverage**: Comprehensive status code validation in `test_websocket_fragmentation.cpp`
+  - Protocol error (1002) ✅ Tested: `given_websocket_malformed_frame_then_connection_closed_with_1002`
+  - Invalid UTF-8 text frame (1002) ✅ Tested: `given_websocket_invalid_utf8_text_frame_then_connection_closed_with_1002`
+  - Reserved opcodes (1002) ✅ Tested: `given_websocket_invalid_reserved_opcode_then_connection_closed_with_1002`
+  - Unsupported data (1003) ✅ Tested: `given_websocket_binary_to_text_handler_then_connection_closed_with_1003`
+  - Policy violation (1008) ✅ Tested: `given_websocket_fragmentation_with_crlf_injection_attempt_then_injection_blocked`
+  - Message too big (1009) ✅ Tested: `given_websocket_oversized_message_then_connection_closed_with_1009`
+  - Server error (1011) ✅ Tested: `given_websocket_memory_exhaustion_then_connection_closed_with_1011`
+  - Extension required (1010) ✅ Tested: `given_websocket_extension_required_but_not_supported_then_connection_closed_with_1010`
 
 #### 6. **Masking & Security** (Section 5.3)
 **Status**: **NOT TESTED**

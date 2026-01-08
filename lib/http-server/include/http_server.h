@@ -115,7 +115,8 @@ initializer that should be kept in sync
             .max_requests_per_conn = 0,                 \
             .max_idle_sec = 10,                         \
             .max_lifetime_sec = 0                       \
-        }                                               \
+        },                                              \
+        .ws_max_fragment_size = 4096                    \
 }
 
 #define ESP_ERR_HTTPD_BASE              (0xb000)                    /*!< Starting number of HTTPD error codes */
@@ -324,6 +325,11 @@ typedef struct httpd_config {
      * Connection persistence configuration
      */
     httpd_connection_config_t connection_config;  /*!< HTTP/1.1 connection persistence settings */
+
+    /**
+     * WebSocket maximum fragment size
+     */
+    uint32_t ws_max_fragment_size;  /*!< Maximum WebSocket fragment size in bytes for reassembly buffer */
 } httpd_config_t;
 
 /**
@@ -1800,8 +1806,10 @@ typedef struct httpd_ws_frame {
     bool fragmented;            /*!< Indication that the frame allocated for transmission is a message fragment,
                                      so the `FIN` flag is set manually according to the `final` option.
                                      This flag is never set for received messages */
+    bool api_allocated_payload; /*!< Indicates if the payload buffer was allocated by the httpd_ws_recv_frame API.
+                                     If true, the caller is responsible for freeing frame->payload after use. */
     httpd_ws_type_t type;       /*!< WebSocket frame type */
-    uint8_t *payload;           /*!< Pre-allocated data buffer */
+    uint8_t *payload;           /*!< Pre-allocated data buffer or API allocated buffer when received */
     size_t len;                 /*!< Length of the WebSocket data */
 } httpd_ws_frame_t;
 
@@ -1898,6 +1906,18 @@ esp_err_t httpd_ws_send_data(httpd_handle_t handle, int socket, httpd_ws_frame_t
  */
 esp_err_t httpd_ws_send_data_async(httpd_handle_t handle, int socket, httpd_ws_frame_t *frame,
                                    transfer_complete_cb callback, void *arg);
+
+/**
+ * @brief Validate UTF-8 encoding in a byte sequence for WebSocket text frames
+ *
+ * Validates UTF-8 byte sequence according to RFC 3629 for use in WebSocket text frames.
+ * Should be called on received text frame payloads to ensure compliance with RFC 6455.
+ *
+ * @param data Pointer to the data to validate
+ * @param len Length of the data in bytes
+ * @return ESP_OK if valid UTF-8, ESP_ERR_INVALID_ARG otherwise
+ */
+esp_err_t httpd_ws_validate_utf8(const uint8_t *data, size_t len);
 
 #endif /* CONFIG_HTTPD_WS_SUPPORT */
 /** End of WebSocket related stuff
