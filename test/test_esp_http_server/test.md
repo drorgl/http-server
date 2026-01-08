@@ -36,6 +36,36 @@ Categories are organized by functional areas to improve maintainability and enab
 - Keep categories focused on single responsibilities
 - Prefer integration testing over direct internal function testing (use public APIs)
 
+## Completed Feature Testing Status
+
+The test suite includes comprehensive coverage of major HTTP/WebSocket protocol features:
+
+### WebSocket Fragmentation (RFC 6455 Section 5.4)
+**Status**: ✅ **FULLY TESTED**
+- **Implementation**: Complete fragmentation support in `httpd_ws_send_frame_async()` and `httpd_ws_recv_frame()` with FIN bit control
+- **Test Coverage**: Comprehensive fragmentation tests in `test_websocket_fragmentation.cpp`
+  - Text message fragmentation (2-fragment, multi-fragment messages)
+  - Binary message fragmentation handling
+  - Control frame interleaving during fragmentation (Ping/Pong)
+  - Large message fragmentation performance validation
+  - Invalid fragmentation error handling (protocol violations, malformed sequences)
+  - Concurrent fragmentation isolation between client connections
+  - CRLF injection prevention during fragmentation
+- **Security**: Fragmentation DoS protection with resource limits
+- **Compatibility**: Cross-platform testing (MINGW64, Linux, ESP32)
+
+### WebSocket Error Handling & Status Codes (RFC 6455 Section 7.4)
+**Status**: ✅ **FULLY TESTED**
+- **Implementation**: Complete status code support with RFC 6455 Section 7.4 compliance
+- **Test Coverage**: Comprehensive status code validation tests:
+  - Protocol error (1002): Invalid UTF-8, malformed frames, reserved opcodes
+  - Unsupported data (1003): Binary data to text handlers
+  - Policy violation (1008): CRLF injection attempts, security policy breaches
+  - Message too big (1009): Payload size limit enforcement
+  - Extension not supported (1010): Extension negotiation failures
+  - Server error (1011): Resource exhaustion, internal failures
+- **Security**: Comprehensive error response validation and connection cleanup
+
 ## Runner Execution Hierarchy
 
 ```
