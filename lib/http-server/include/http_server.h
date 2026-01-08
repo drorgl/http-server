@@ -424,7 +424,7 @@ typedef struct httpd_req {
     httpd_handle_t  handle;                     /*!< Handle to server instance */
     int             method;                     /*!< The type of HTTP request, -1 if unsupported method, HTTP_ANY for wildcard method to support every method */
     const char      uri[HTTPD_MAX_URI_LEN + 1]; /*!< The URI of this request (1 byte extra for null termination) */
-    const char      version[16];                /*!< HTTP version string (e.g., "HTTP/1.1", "HTTP/1.0") */
+    const char      version[17];                /*!< HTTP version string (e.g., "HTTP/1.1", "HTTP/1.0") */
     size_t          content_len;                /*!< Length of the request body */
     void           *aux;                        /*!< Internally used members */
 

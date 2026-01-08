@@ -576,7 +576,7 @@ esp_err_t middleware_content_negotiation(httpd_req_t *req,
                            config->capabilities.language_count > 0 ||
                            config->capabilities.charset_count > 0;
 
-    LOGD("content_negotiation", "middleware: capabilities - media=%u, encoding=%u, language=%u, charset=%u, should_negotiate=%d",
+    LOGD("content_negotiation", "middleware: capabilities - media=%zu, encoding=%zu, language=%zu, charset=%zu, should_negotiate=%d",
          config->capabilities.media_type_count, config->capabilities.encoding_count,
          config->capabilities.language_count, config->capabilities.charset_count, should_negotiate);
 

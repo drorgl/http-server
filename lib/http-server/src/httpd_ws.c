@@ -1381,7 +1381,7 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
     /* Send off header */
     int header_send_ret = sess->send_fn(hd, fd, (const char *)header_buf, tx_len, 0);
     if (header_send_ret < 0) {
-        LOGW(TAG, "Failed to send WS header. Ret: %d, FD: %d, Type: %d, Len: %d", header_send_ret, fd, frame->type, frame->len);
+        LOGW(TAG, "Failed to send WS header. Ret: %d, FD: %d, Type: %d, Len: %zu", header_send_ret, fd, frame->type, frame->len);
         return ESP_FAIL;
     }
     LOGD(TAG, "Sent WS header. FD: %d, Type: %d, Len: %d (payload len: %zu)", fd, frame->type, tx_len, frame->len);
@@ -1390,7 +1390,7 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
     if(frame->len > 0 && frame->payload != NULL) {
         int payload_send_ret = sess->send_fn(hd, fd, (const char *)frame->payload, frame->len, 0);
         if (payload_send_ret < 0) {
-            LOGW(TAG, "Failed to send WS payload. Ret: %d, FD: %d, Type: %d, Len: %d", payload_send_ret, fd, frame->type, frame->len);
+            LOGW(TAG, "Failed to send WS payload. Ret: %d, FD: %d, Type: %d, Len: %zu", payload_send_ret, fd, frame->type, frame->len);
             return ESP_FAIL;
         }
         LOGD(TAG, "Sent WS payload. FD: %d, Type: %d, Len: %d, Payload: %.*s", fd, frame->type, frame->len, (frame->len > 32 ? 32 : (int)frame->len), (char*)frame->payload);
