@@ -13,22 +13,6 @@
 #include <windows.h>
 #endif
 
-#ifdef ESP_PLATFORM
-#include "port/esp32/osal.h"
-#endif
-
-// Define httpd_os_thread_sleep for native tests if not available
-#ifndef ESP_PLATFORM
-static void httpd_os_thread_sleep(int msecs) {
-    // Simple sleep implementation for native tests
-    // For Windows
-    #ifdef _WIN32
-        Sleep(msecs);
-    #else
-        usleep(msecs * 1000);
-    #endif
-}
-#endif
 
 static esp_err_t set_content_type_mock(httpd_req_t *req, const char *content_type) {
     // For now, just return OK (Phase 1 - basic functionality)

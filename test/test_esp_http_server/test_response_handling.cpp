@@ -674,7 +674,7 @@ void given_server_with_range_middleware_when_client_requests_valid_range_then_20
             if (range_header && strncmp(range_header, "bytes=", 6) == 0) {
                 // Parse range
                 const char *range_spec = range_header + 6;
-                char *dash_pos = strchr(range_spec, '-');
+                const char *dash_pos = strchr(range_spec, '-');
                 if (dash_pos) {
                     long long start = atol(range_spec);
                     long long end = atol(dash_pos + 1);
