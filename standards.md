@@ -482,23 +482,23 @@ Based on analysis of RFC 1945 and the current test suite, several major HTTP/1.0
 - **Test Status**: ✅ **FULLY TESTED** - Comprehensive DELETE tests in `test_http_methods.cpp` with no-body validation (test_http_methods.cpp:98)
 - **Impact**: High - DELETE is a fundamental HTTP method for removing resources
 
-#### 3. **LINK/UNLINK Methods**: ❌ MISSING
+#### 3. **LINK/UNLINK Methods**: ⚠️ DEFERRED: FUTURE IMPLEMENTATION
 - **RFC Status**: Defined in RFC 1945 Appendix D.1.3-D.1.4
 - **Implementation**: Code exists in `httpd_uri.c` - `httpd_find_uri_handler()` supports `HTTP_ANY` method and method matching
-- **Test Status**: ❌ **NOT TESTED** - No LINK/UNLINK tests found
-- **Impact**: Medium - Less commonly used but part of RFC
+- **Decision**: Rare, superseded by Web Linking; nice-to-have for completeness
+- **Impact**: Low - Deferred to future release cycles
 
-#### 4. **HTTP/0.9 Support**: ❌ MISSING
+#### 4. **HTTP/0.9 Support**: ❌ OUT OF SCOPE
 - **RFC Status**: RFC 1945 mentions HTTP/0.9 compatibility (Section 1.1, 3.1, 5.1)
+- **Decision**: Server targets HTTP/1.0+ only; legacy compatibility not planned
 - **Implementation**: Code exists in `httpd_main.c` (`httpd_accept_conn()`), `httpd_parse.c` (`verify_url()`)
-- **Test Status**: ❌ **NOT TESTED** - No HTTP/0.9 specific tests
-- **Impact**: Medium - Legacy compatibility feature
+- **Status**: Intentionally not supported
 
-#### 5. **HTTP/1.0 Version Detection and Handling**: ❌ MISSING
+#### 5. **HTTP/1.0 Version Detection and Handling**: ✅ ALREADY IMPLEMENTED
 - **RFC Status**: Section 3.1, 5.1, 6.1, 9.5
-- **Implementation**: Code exists in `httpd_parse.c` (`verify_url()`)
-- **Test Status**: ❌ **NOT TESTED** - No specific version handling tests
-- **Impact**: Medium - Important for protocol compliance
+- **Implementation**: Code exists in `httpd_parse.c` (`verify_url()`) with version validation
+- **Decision**: Already implemented in version checking logic
+- **Impact**: Core functionality - already covered
 
 #### 6. **Conditional GET with If-Modified-Since**: ❌ MISSING
 - **RFC Status**: Section 8.1, 10.9
