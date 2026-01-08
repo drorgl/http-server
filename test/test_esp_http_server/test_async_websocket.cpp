@@ -555,7 +555,6 @@ int test_async_websocket(void) {
     RUN_TEST(given_ws_connection_when_sending_async_from_another_task_then_succeeds);
     RUN_TEST(given_closed_ws_connection_when_sending_sync_then_fails);
     RUN_TEST(given_closed_ws_connection_when_sending_async_then_callback_receives_error);
-    // RUN_TEST(given_ws_connection_when_sending_2_fragment_message_then_reassembled_correctly);
     // return UNITY_END();
     return 0;
 }
