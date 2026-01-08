@@ -18,6 +18,7 @@
 #include <unistd.h> // for close
 #include <netinet/in.h> // For in_port_t on Linux
 #endif
+#include <cctype>
 
 #define TEST_TIMEOUT_MS 5000
 
@@ -772,7 +773,7 @@ void given_server_with_range_middleware_when_client_requests_invalid_range_then_
             if (range_header && strncmp(range_header, "bytes=", 6) == 0) {
                 // Parse range
                 const char *range_spec = range_header + 6;
-                char *dash_pos = strchr(range_spec, '-');
+                const char *dash_pos = strchr(range_spec, '-');
                 if (dash_pos) {
                     long long start = atol(range_spec);
                     long long end = atol(dash_pos + 1);
