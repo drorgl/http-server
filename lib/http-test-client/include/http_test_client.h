@@ -210,6 +210,17 @@ http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *clie
                                                  uint32_t timeout_ms);
 
 /**
+ * @brief Sends an unmasked WebSocket data frame.
+ * @param client_handle The client handle.
+ * @param frame The WebSocket frame to send (payload must be unmasked, masked field is ignored).
+ * @param timeout_ms Timeout for sending.
+ * @return HTTP_TEST_CLIENT_OK on success, or an error code.
+ */
+http_test_client_err_t ws_test_client_send_unmasked_frame(http_test_client_handle_t *client_handle,
+                                                          const ws_test_frame_t *frame,
+                                                          uint32_t timeout_ms);
+
+/**
  * @brief Receives a WebSocket data frame.
  * @param client_handle The client handle.
  * @param frame Pointer to a ws_test_frame_t structure to fill with received data.

@@ -796,6 +796,21 @@ http_test_client_err_t ws_test_client_handshake_with_extensions(http_test_client
     return HTTP_TEST_CLIENT_OK;
 }
 
+http_test_client_err_t ws_test_client_send_unmasked_frame(http_test_client_handle_t *client_handle,
+                                                          const ws_test_frame_t *frame,
+                                                          uint32_t timeout_ms) {
+    if (client_handle == NULL || frame == NULL) {
+        return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
+    }
+
+    // Create a temporary frame copy with masking disabled
+    ws_test_frame_t unmasked_frame = *frame;
+    unmasked_frame.masked = false; // Force unmasked transmission
+
+    // Send using the regular function which respects the masked field
+    return ws_test_client_send_frame(client_handle, &unmasked_frame, timeout_ms);
+}
+
 http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *client_handle,
                                                  const ws_test_frame_t *frame,
                                                  uint32_t timeout_ms) {

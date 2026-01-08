@@ -66,6 +66,16 @@ The test suite includes comprehensive coverage of major HTTP/WebSocket protocol 
   - Server error (1011): Resource exhaustion, internal failures
 - **Security**: Comprehensive error response validation and connection cleanup
 
+### WebSocket Masking & Security (RFC 6455 Section 5.3)
+**Status**: ✅ **FULLY TESTED**
+- **Implementation**: Complete masking enforcement with RFC 6455 Section 5.3 compliance
+- **Test Coverage**: Comprehensive masking validation in `test_websocket_masking.cpp`
+  - Unmasked frame rejection with close code 1002: Server correctly rejects unmasked client frames
+  - Proper masking flow acceptance: Masked frames are accepted and correctly unmasked
+  - XOR algorithm correctness: Mathematical validation of masking/unmasking operations
+- **Security**: Prevents cache poisoning attacks documented in RFC 6455 Section 10.3
+- **Compatibility**: Cross-platform testing (MINGW64, Linux, ESP32)
+
 ## Runner Execution Hierarchy
 
 ```

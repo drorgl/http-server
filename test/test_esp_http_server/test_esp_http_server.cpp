@@ -34,6 +34,7 @@
 #include "test_connection_persistence.h"
 #include "test_connection_persistence_e2e.h"
 #include "test_websocket_fragmentation.h"
+#include "test_websocket_masking.h"
 #include "test_websocket_security.h"
 #define TAG "TEST_HTTPD_COORDINATOR"
 
@@ -54,7 +55,7 @@ void tearDown(){
 }
 
 int test_esp_http_server(){
-    return 
+    return
         test_uri_handlers()+
         test_utilities()+
         test_client_management()+
@@ -74,13 +75,14 @@ int test_esp_http_server(){
         test_websocket_extensions_integration() +
         test_websocket_extensions_e2e() +
         test_session_context() +
-        test_connection_persistence_e2e() + 
-        test_connection_persistence() + 
-        test_async_websocket() + 
-        test_error_handling() + 
-        test_websocket_security() + 
+        test_connection_persistence_e2e() +
+        test_connection_persistence() +
+        test_async_websocket() +
+        test_error_handling() +
+        test_websocket_security() +
         test_websocket() +
-        test_websocket_fragmentation();
+        test_websocket_fragmentation()+
+        test_websocket_masking();
 }
 
 #ifdef __cplusplus

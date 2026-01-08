@@ -1116,6 +1116,15 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             /* If the WS frame from client to server is not masked, it should be rejected.
              * Please refer to RFC6455 Section 5.2 for more details. */
             LOGW(TAG, LOG_FMT("WS frame is not properly masked."));
+            // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
+            httpd_ws_frame_t close_frame = {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                .len = 2
+            };
+            httpd_ws_send_frame(req, &close_frame);
             return ESP_ERR_INVALID_STATE;
         }
     }
