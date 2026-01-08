@@ -937,7 +937,9 @@ Based on analysis of RFC 1945 and the current test suite, several major HTTP/1.0
 15. **Add Performance/Stress Tests**: Test connection limits and LRU behavior under load
 16. **Add Interoperability Tests**: Test compatibility with various HTTP clients and proxies
 
-## WebSocket Protocol (RFC 6455) Compliance Analysis
+## WebSocket Protocol (RFC 6455) - Security Features Tested
+
+**Major Vulnerabilities Addressed with Comprehensive Tests:**
 
 ### Major RFC 6455 Features Not Tested
 
@@ -967,14 +969,22 @@ Based on analysis of RFC 6455 and the current test suite, several major WebSocke
   - Subprotocol-specific data handling
 
 #### 3. **Fragmentation** (Section 5.4)
-**Status**: **NOT TESTED**
+**Status**: ✅ **FULLY TESTED**
 - **Feature**: Large messages can be split across multiple frames
 - **Implementation**: The library supports fragmentation in `httpd_ws_recv_frame()`
-- **Missing Tests**:
-  - Text message fragmentation
-  - Binary message fragmentation
-  - Mixed control frames with fragmented messages
-  - Large message reassembly
+- **Implementation Details**:
+  - Text message fragmentation with 2-fragment, 3-fragment, and large message tests
+  - Binary message fragmentation with multi-part fragmentation
+  - Control frame interleaving during fragmentation sequences
+  - Invalid fragmentation error handling (protocol violations, buffer overflow)
+  - Concurrent fragmentation isolation between client connections
+- **Test Coverage**:
+  - Text message fragmentation reassembly
+  - Binary message fragmentation handling
+  - Control frame interleaving with PING/PONG during fragments
+  - Large message fragmentation performance validation
+  - Error handling for malformed fragmentation
+  - Concurrent client fragmentation isolation
 
 #### 4. **Control Frames** (Section 5.5)
 **Status**: **PARTIALLY TESTED** - Only basic PING/PONG

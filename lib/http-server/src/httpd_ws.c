@@ -187,6 +187,7 @@ static esp_err_t httpd_ws_validate_param_value(const char *key, const char *valu
         }
     }
 
+    // LOGD(TAG, "httpd_ws_send_frame_async: Returning ESP_OK");
     return ESP_OK;
 }
 
@@ -250,7 +251,7 @@ esp_err_t httpd_ws_parse_extension_params(const char *param_str, extension_param
         /* Find key=value */
         char *eq_pos = strchr(token, '=');
         if (!eq_pos) {
-            LOGW(TAG, "Malformed parameter, missing '=': %s", token);
+            LOGW(TAG, "Malformed parameter, missing '=': '%s'", token);
             free(param_copy);
             free(param_array);
             return ESP_ERR_INVALID_ARG;
@@ -268,14 +269,14 @@ esp_err_t httpd_ws_parse_extension_params(const char *param_str, extension_param
 
         /* Validate parameter key and value */
         if (!httpd_ws_is_valid_token(key)) {
-            LOGW(TAG, "Invalid parameter key: %s", key);
+            LOGW(TAG, "Invalid parameter key: '%s'", key);
             free(param_copy);
             free(param_array);
             return ESP_ERR_INVALID_ARG;
         }
 
         if (httpd_ws_validate_param_value(key, value) != ESP_OK) {
-            LOGW(TAG, "Parameter validation failed for %s=%s", key, value);
+            LOGW(TAG, "Parameter validation failed for '%s'='%s'", key, value);
             free(param_copy);
             free(param_array);
             return ESP_ERR_INVALID_ARG;
@@ -409,7 +410,7 @@ esp_err_t httpd_ws_parse_extensions(const char *header, ws_extension_t **extensi
 
     /* Validate extension name (RFC 6455 token validation) */
     if (strlen(ext_name) == 0 || strlen(ext_name) > 50 || !httpd_ws_is_valid_token(ext_name)) {
-        LOGW(TAG, "Invalid extension name: %s", ext_name);
+        LOGW(TAG, "Invalid extension name: '%s'", ext_name);
         free(header_copy);
         httpd_ws_free_extensions(ext_array, parsed_count + 1);
         *extensions = NULL;
@@ -646,6 +647,13 @@ char *httpd_ws_build_extension_header(const ws_extension_t *extensions, size_t c
     return header;
 }
 
+static void httpd_ws_free_fragmentation_ctx(void *ctx)
+{
+    if (ctx) {
+        free(ctx);
+    }
+}
+
 esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *supported_subprotocol, const char *supported_extensions)
 {
     /* Probe if input parameters are valid or not */
@@ -718,10 +726,10 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
 
     if (httpd_req_get_hdr_value_str(req, "Sec-WebSocket-Extensions", client_ext_header, sizeof(client_ext_header)) == ESP_OK) {
         ext_parse_ret = httpd_ws_parse_extensions(client_ext_header, &client_extensions, &client_extensions_count);
-        if (ext_parse_ret != ESP_OK) {
-            LOGW(TAG, "Failed to parse client WebSocket extensions: %s", client_ext_header);
-            /* Continue handshake - malformed extensions should not fail the connection per RFC */
-        }
+    if (ext_parse_ret != ESP_OK) {
+        LOGW(TAG, "Failed to parse client WebSocket extensions: %d %s", ext_parse_ret, client_ext_header);
+        /* Continue handshake - malformed extensions should not fail the connection per RFC */
+    }
     }
 
     /* Parse server supported extensions if any */
@@ -729,10 +737,10 @@ esp_err_t httpd_ws_respond_server_handshake(httpd_req_t *req, const char *suppor
     size_t server_extensions_count = 0;
     if (supported_extensions && strlen(supported_extensions) > 0) {
         ext_parse_ret = httpd_ws_parse_extensions(supported_extensions, &server_extensions, &server_extensions_count);
-        if (ext_parse_ret != ESP_OK) {
-            LOGW(TAG, "Failed to parse server supported extensions: %s", supported_extensions);
-            /* Continue - this is a server configuration error, but handshake should proceed */
-        }
+    if (ext_parse_ret != ESP_OK) {
+        LOGW(TAG, "Failed to parse server supported extensions: %d %s", ext_parse_ret, supported_extensions);
+        /* Continue - this is a server configuration error, but handshake should proceed */
+    }
     }
 
     /* Negotiate extensions */
@@ -905,6 +913,7 @@ static esp_err_t httpd_ws_unmask_payload(uint8_t *payload, size_t len, const uin
 
 esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t max_len)
 {
+    LOGD(TAG, "httpd_ws_recv_frame: Entry. max_len: %" NEWLIB_NANO_COMPAT_FORMAT, NEWLIB_NANO_COMPAT_CAST(max_len));
     esp_err_t ret = httpd_ws_check_req(req);
     if (ret != ESP_OK) {
         return ret;
@@ -920,16 +929,39 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         LOGW(TAG, LOG_FMT("Frame pointer is invalid"));
         return ESP_ERR_INVALID_ARG;
     }
+
+    struct sock_db *sd = aux->sd;
+    if (sd == NULL) {
+        LOGW(TAG, LOG_FMT("Invalid sd pointer"));
+        return ESP_ERR_INVALID_ARG;
+    }
+    ws_fragmentation_ctx_t *ws_frg_ctx = (ws_fragmentation_ctx_t *)sd->ws_fragment_ctx;
+
+    size_t current_frame_fragment_len = 0;
+    if (frame->len != 0) {
+        current_frame_fragment_len = frame->len;
+    }
+    uint8_t current_frame_type = 0; // The frame type of the current *fragment*
+    if (frame->len != 0) {
+        current_frame_type = aux->ws_type;
+    }
+    bool current_frame_final = false; // FIN flag of the current *fragment*
+    if (frame->len != 0) {
+        current_frame_final = aux->ws_final;
+    }
+
     /* If frame len is 0, will get frame len from req. Otherwise regard frame len already achieved by calling httpd_ws_recv_frame before */
     if (frame->len == 0) {
-        /* Assign the frame info from the previous reading */
-        frame->type = aux->ws_type;
-        frame->final = aux->ws_final;
+        /* Assign the frame info from the previous reading. These are the values from httpd_ws_get_frame_type */
+        current_frame_type = aux->ws_type;
+        current_frame_final = aux->ws_final;
+        LOGD(TAG, "httpd_ws_recv_frame: Inside if (frame->len == 0). current_frame_type: %d, aux->ws_type: %d", current_frame_type, aux->ws_type);
 
         /* Grab the second byte */
         uint8_t second_byte = 0;
-        if (httpd_recv_with_opt(req, (char *)&second_byte, sizeof(second_byte), false) <= 0) {
-            LOGW(TAG, LOG_FMT("Failed to receive the second byte"));
+        int recv_ret = httpd_recv_with_opt(req, (char *)&second_byte, sizeof(second_byte), false);
+        if (recv_ret <= 0) {
+            LOGW(TAG, LOG_FMT("Failed to receive the second byte. Ret: %d"), recv_ret);
             return ESP_FAIL;
         }
 
@@ -941,25 +973,25 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         uint8_t init_len = second_byte & HTTPD_WS_LENGTH_BITS;
         if (init_len < 126) {
             /* Case 1: If length is 0-125, then this length bit is 7 bits */
-            frame->len = init_len;
+            current_frame_fragment_len = init_len;
         } else if (init_len == 126) {
             /* Case 2: If length byte is 126, then this frame's length bit is 16 bits */
             uint8_t length_bytes[2] = { 0 };
-            if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false) <= 0) {
-                LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length"));
+            recv_ret = httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false);
+            if (recv_ret <= 0) {
+                LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length. Ret: %d"), recv_ret);
                 return ESP_FAIL;
             }
-
-            frame->len = ((uint32_t)(length_bytes[0] << 8U) | (length_bytes[1]));
+            current_frame_fragment_len = ((uint32_t)(length_bytes[0] << 8U) | (length_bytes[1]));
         } else if (init_len == 127) {
             /* Case 3: If length is byte 127, then this frame's length bit is 64 bits */
             uint8_t length_bytes[8] = { 0 };
-            if (httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false) <= 0) {
-                LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length"));
+            recv_ret = httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false);
+            if (recv_ret <= 0) {
+                LOGW(TAG, LOG_FMT("Failed to receive 8 bytes length. Ret: %d"), recv_ret);
                 return ESP_FAIL;
             }
-
-            frame->len = (((uint64_t)length_bytes[0] << 56U) |
+            current_frame_fragment_len = (((uint64_t)length_bytes[0] << 56U) |
                     ((uint64_t)length_bytes[1] << 48U) |
                     ((uint64_t)length_bytes[2] << 40U) |
                     ((uint64_t)length_bytes[3] << 32U) |
@@ -968,10 +1000,12 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
                     ((uint64_t)length_bytes[6] <<  8U) |
                     ((uint64_t)length_bytes[7]));
         }
+
         /* If this frame is masked, dump the mask as well */
         if (masked) {
-            if (httpd_recv_with_opt(req, (char *)aux->mask_key, sizeof(aux->mask_key), false) <= 0) {
-                LOGW(TAG, LOG_FMT("Failed to receive mask key"));
+            recv_ret = httpd_recv_with_opt(req, (char *)aux->mask_key, sizeof(aux->mask_key), false);
+            if (recv_ret <= 0) {
+                LOGW(TAG, LOG_FMT("Failed to receive mask key. Ret: %d"), recv_ret);
                 return ESP_FAIL;
             }
         } else {
@@ -981,47 +1015,200 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             return ESP_ERR_INVALID_STATE;
         }
     }
-    /* We only accept the incoming packet length that is smaller than the max_len (or it will overflow the buffer!) */
-    /* If max_len is 0, regard it OK for userspace to get frame len */
-    if (frame->len > max_len) {
-        if (max_len == 0) {
-            LOGD(TAG, "regard max_len == 0 is OK for user to get frame len");
+
+    /* Populate frame structure with parsed header information */
+    frame->len = current_frame_fragment_len;
+    frame->type = current_frame_type;
+    frame->final = current_frame_final;
+
+    /* Handle fragmentation */
+    if (ws_frg_ctx && ws_frg_ctx->in_fragmentation) {
+        /* Handle control frames during fragmentation separately - they don't participate in reassembly */
+        if (current_frame_type >= 8) { // Control frames
+            LOGD(TAG, "Control frame %d received during fragmentation, handling separately", current_frame_type);
+
+            /* We only accept the incoming packet length that is smaller than the max_len */
+            if (current_frame_fragment_len > max_len) {
+                if (max_len != 0) {
+                    LOGW(TAG, LOG_FMT("Control frame too long during fragmentation"));
+                    return ESP_ERR_INVALID_SIZE;
+                }
+            }
+
+            if (current_frame_fragment_len == 0) {
+                frame->len = 0;
+                return ESP_OK;
+            }
+
+            if (frame->payload == NULL) {
+                LOGW(TAG, LOG_FMT("Payload buffer is null for control frame"));
+                return ESP_FAIL;
+            }
+
+            size_t left_len = current_frame_fragment_len;
+            size_t offset = 0;
+
+            while (left_len > 0) {
+                int read_len = httpd_recv_with_opt(req, (char *)frame->payload + offset, left_len, false);
+                if (read_len <= 0) {
+                    LOGW(TAG, LOG_FMT("Failed to receive control frame payload during fragmentation"));
+                    return ESP_FAIL;
+                }
+                offset += read_len;
+                left_len -= read_len;
+            }
+
+            httpd_ws_unmask_payload(frame->payload, current_frame_fragment_len, aux->mask_key);
+
+            frame->type = current_frame_type;
+            frame->final = current_frame_final;
+
+            LOGD_BUFFER_HEXDUMP(TAG, frame->payload, current_frame_fragment_len, "Server received control frame during fragmentation: type=%d, final=%d, len=%zu", current_frame_type, current_frame_final, current_frame_fragment_len);
+
             return ESP_OK;
         }
-        LOGW(TAG, LOG_FMT("WS Message too long"));
-        return ESP_ERR_INVALID_SIZE;
-    }
 
-    /* Receive buffer */
-    /* If there's nothing to receive, return and stop here. */
-    if (frame->len == 0) {
-        return ESP_OK;
-    }
+        // Validate fragment size limits to prevent DoS
+        if (current_frame_fragment_len > 4096) {
+            LOGD(TAG, LOG_FMT("Buffer overflow detected, sending close frame (status 1009)"));
+            httpd_ws_frame_t close_frame = {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = (uint8_t[]){0x03, 0xE9},  // Status code 1009 (Message Too Big) in network byte order
+                .len = 2
+            };
+            httpd_ws_send_frame(req, &close_frame);
+            LOGW(TAG, LOG_FMT("Fragment too large: %"NEWLIB_NANO_COMPAT_FORMAT" bytes, max allowed: 4096"),
+                 NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len));
+            ws_frg_ctx->in_fragmentation = false;
+            ws_frg_ctx->reassembled_len = 0;
+            return ESP_ERR_INVALID_SIZE;
+        }
 
-    if (frame->payload == NULL) {
-        LOGW(TAG, LOG_FMT("Payload buffer is null"));
-        return ESP_FAIL;
-    }
+        // Check for buffer overflow before receiving payload
+        if ((ws_frg_ctx->reassembled_len + current_frame_fragment_len) > sizeof(ws_frg_ctx->reassembled_buffer)) {
+            LOGD(TAG, LOG_FMT("Buffer overflow detected, sending close frame (status 1009)"));
+            httpd_ws_frame_t close_frame = {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = (uint8_t[]){0x03, 0xE9},  // Status code 1009 (Message Too Big) in network byte order
+                .len = 2
+            };
+            httpd_ws_send_frame(req, &close_frame);
+            LOGW(TAG, LOG_FMT("Reassembly buffer overflow! Size: %"NEWLIB_NANO_COMPAT_FORMAT", current frame: %"NEWLIB_NANO_COMPAT_FORMAT", max: %"NEWLIB_NANO_COMPAT_FORMAT),
+                 NEWLIB_NANO_COMPAT_CAST(ws_frg_ctx->reassembled_len),
+                 NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len),
+                 NEWLIB_NANO_COMPAT_CAST(sizeof(ws_frg_ctx->reassembled_buffer)));
+            ws_frg_ctx->in_fragmentation = false; // Reset state
+            ws_frg_ctx->reassembled_len = 0;
+            return ESP_ERR_INVALID_SIZE; // Or appropriate error for buffer overflow
+        }
 
-    size_t left_len = frame->len;
-    size_t offset = 0;
+        // Receive payload directly into the reassembly buffer
+        size_t left_len = current_frame_fragment_len;
+        size_t offset = 0;
+        
+        while (left_len > 0) {
+            int read_len_frag = httpd_recv_with_opt(req, (char *)ws_frg_ctx->reassembled_buffer + ws_frg_ctx->reassembled_len + offset, left_len, false);
+            if (read_len_frag <= 0) {
+                LOGW(TAG, LOG_FMT("Failed to receive fragmented payload. Ret: %d"), read_len_frag);
+                ws_frg_ctx->in_fragmentation = false; // Reset state on error
+                ws_frg_ctx->reassembled_len = 0;
+                return ESP_FAIL;
+            }
+            offset += read_len_frag;
+            left_len -= read_len_frag;
+        }
 
-    while (left_len > 0) {
-        int read_len = httpd_recv_with_opt(req, (char *)frame->payload + offset, left_len, false);
-        if (read_len <= 0) {
-            LOGW(TAG, LOG_FMT("Failed to receive payload"));
+        /* Unmask payload */
+        httpd_ws_unmask_payload((uint8_t *)ws_frg_ctx->reassembled_buffer + ws_frg_ctx->reassembled_len,
+                                current_frame_fragment_len, aux->mask_key);
+
+        LOGD_BUFFER_HEXDUMP(TAG, (uint8_t *)ws_frg_ctx->reassembled_buffer + ws_frg_ctx->reassembled_len, current_frame_fragment_len, "Server received fragment: type=%d, final=%d, len=%zu", current_frame_type, current_frame_final, current_frame_fragment_len);
+
+        ws_frg_ctx->reassembled_len += current_frame_fragment_len;
+
+        if (current_frame_final) {
+            // End of fragmented message
+            LOGD(TAG, LOG_FMT("Reassembled message complete. Total length: %"NEWLIB_NANO_COMPAT_FORMAT), NEWLIB_NANO_COMPAT_CAST(ws_frg_ctx->reassembled_len));
+
+            // Prepare the 'frame' structure for the user handler with the reassembled message
+            frame->payload = (uint8_t *)ws_frg_ctx->reassembled_buffer;
+            frame->len = ws_frg_ctx->reassembled_len;
+            LOGD(TAG, "httpd_ws_recv_frame: Before assigning frame->type. ws_frg_ctx->message_type: %d", ws_frg_ctx->message_type);
+            frame->type = ws_frg_ctx->message_type; // Original opcode (TEXT/BINARY)
+            LOGD(TAG, "httpd_ws_recv_frame: After assigning frame->type. frame->type: %d", frame->type);
+            frame->final = true; // Overall message is final
+            frame->fragmented = false; // Not a fragmented message anymore from user's perspective
+
+            // Reset fragmentation state for the next message
+            ws_frg_ctx->in_fragmentation = false;
+            ws_frg_ctx->reassembled_len = 0;
+            ws_frg_ctx->message_type = 0; // Clear stored type
+
+            return ESP_OK; // Return the reassembled message
+        } else {
+            // More fragments expected
+            return ESP_ERR_HTTPD_WS_PENDING_FRAGMENT; // Inform caller that more fragments are expected
+        }
+    } else { // Not in fragmentation
+        /* Validate frame type sequencing according to RFC 6455 Section 5.4 */
+        if (aux->ws_type == HTTPD_WS_TYPE_CONTINUE) {
+            LOGW(TAG, LOG_FMT("Invalid CONTINUATION frame (0x%x) received without active fragmentation"), aux->ws_type);
+            return ESP_ERR_HTTPD_WS_ERR_FRAGMENT_PROTOCOL;
+        }
+
+        /* We only accept the incoming packet length that is smaller than the max_len (or it will overflow the buffer!) */
+        /* If max_len is 0, regard it OK for userspace to get frame len */
+        if (current_frame_fragment_len > max_len) {
+            if (max_len == 0) {
+                LOGD(TAG, "regard max_len == 0 is OK for user to get frame len");
+                // However, we still need to consume the payload if max_len == 0 and frame->len > 0
+                // httpd_ws_recv_frame is used to both *get* the frame header and *receive* the payload
+                return ESP_OK; // Indicate header is parsed, payload should be read by caller
+            }
+            LOGW(TAG, LOG_FMT("WS Message too long"));
+            return ESP_ERR_INVALID_SIZE;
+        }
+
+        /* Receive buffer */
+        /* If there's nothing to receive, return and stop here. */
+        if (current_frame_fragment_len == 0) {
+            frame->len = 0; // Ensure frame->len is 0 for no payload
+            return ESP_OK;
+        }
+
+        if (frame->payload == NULL) {
+            LOGW(TAG, LOG_FMT("Payload buffer is null"));
             return ESP_FAIL;
         }
-        offset += read_len;
-        left_len -= read_len;
 
-        LOGD(TAG, "Frame length: %"NEWLIB_NANO_COMPAT_FORMAT", Bytes Read: %"NEWLIB_NANO_COMPAT_FORMAT, NEWLIB_NANO_COMPAT_CAST(frame->len), NEWLIB_NANO_COMPAT_CAST(offset));
+        size_t left_len = current_frame_fragment_len;
+        size_t offset = 0;
+
+        while (left_len > 0) {
+            int read_len_non_frag = httpd_recv_with_opt(req, (char *)frame->payload + offset, left_len, false);
+            if (read_len_non_frag <= 0) {
+                LOGW(TAG, LOG_FMT("Failed to receive payload. Ret: %d"), read_len_non_frag);
+                return ESP_FAIL;
+            }
+            offset += read_len_non_frag;
+            left_len -= read_len_non_frag;
+
+            LOGD(TAG, "Frame length: %"NEWLIB_NANO_COMPAT_FORMAT", Bytes Read: %"NEWLIB_NANO_COMPAT_FORMAT, NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len), NEWLIB_NANO_COMPAT_CAST(offset));
+        }
+
+        /* Unmask payload */
+        httpd_ws_unmask_payload(frame->payload, current_frame_fragment_len, aux->mask_key);
+
+        frame->len = current_frame_fragment_len;
+        frame->type = current_frame_type;
+        frame->final = current_frame_final;
+
+        return ESP_OK;
     }
-
-    /* Unmask payload */
-    httpd_ws_unmask_payload(frame->payload, frame->len, aux->mask_key);
-
-    return ESP_OK;
 }
 
 esp_err_t httpd_ws_send_frame(httpd_req_t *req, httpd_ws_frame_t *frame)
@@ -1043,9 +1230,12 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
     /* Prepare Tx buffer - maximum length is 14, which includes 2 bytes header, 8 bytes length, 4 bytes mask key */
     uint8_t tx_len = 0;
     uint8_t header_buf[10] = {0 };
-    /* Set the `FIN` bit by default if message is not fragmented. Else, set it as per the `final` field */
-    header_buf[0] |= (!frame->fragmented) ? HTTPD_WS_FIN_BIT : (frame->final? HTTPD_WS_FIN_BIT: HTTPD_WS_CONTINUE);
-    header_buf[0] |= frame->type; /* Type (opcode): 4 bits */
+    LOGD(TAG, "httpd_ws_send_frame_async: Frame details - FD: %d, Final: %d, Fragmented: %d, Type: %d, Len: %lu",
+         fd, frame->final, frame->fragmented, frame->type, frame->len);
+    
+    /* Set the `FIN` bit if the frame is final, then add the opcode */
+    header_buf[0] = (frame->final ? HTTPD_WS_FIN_BIT : 0) | frame->type;
+    LOGD(TAG, "httpd_ws_send_frame_async: Constructed header_buf[0]: 0x%02x with final: %d and type: %d", header_buf[0], frame->final, frame->type);
 
     if (frame->len <= 125) {
         header_buf[1] = frame->len & 0x7fU; /* Length for 7 bits */
@@ -1077,17 +1267,21 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
     }
 
     /* Send off header */
-    if (sess->send_fn(hd, fd, (const char *)header_buf, tx_len, 0) < 0) {
-        LOGW(TAG, LOG_FMT("Failed to send WS header"));
+    int header_send_ret = sess->send_fn(hd, fd, (const char *)header_buf, tx_len, 0);
+    if (header_send_ret < 0) {
+        LOGW(TAG, "Failed to send WS header. Ret: %d, FD: %d, Type: %d, Len: %d", header_send_ret, fd, frame->type, frame->len);
         return ESP_FAIL;
     }
+    LOGD(TAG, "Sent WS header. FD: %d, Type: %d, Len: %d (payload len: %lu)", fd, frame->type, tx_len, frame->len);
 
     /* Send off payload */
     if(frame->len > 0 && frame->payload != NULL) {
-        if (sess->send_fn(hd, fd, (const char *)frame->payload, frame->len, 0) < 0) {
-            LOGW(TAG, LOG_FMT("Failed to send WS payload"));
+        int payload_send_ret = sess->send_fn(hd, fd, (const char *)frame->payload, frame->len, 0);
+        if (payload_send_ret < 0) {
+            LOGW(TAG, "Failed to send WS payload. Ret: %d, FD: %d, Type: %d, Len: %d", payload_send_ret, fd, frame->type, frame->len);
             return ESP_FAIL;
         }
+        LOGD(TAG, "Sent WS payload. FD: %d, Type: %d, Len: %d, Payload: %.*s", fd, frame->type, frame->len, (frame->len > 32 ? 32 : (int)frame->len), (char*)frame->payload);
     }
 
     return ESP_OK;
@@ -1095,6 +1289,7 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
 
 esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
 {
+    LOGD(TAG, "httpd_ws_get_frame_type: Entry.");
     esp_err_t ret = httpd_ws_check_req(req);
     if (ret != ESP_OK) {
         return ret;
@@ -1112,6 +1307,18 @@ esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* Get/Create fragmentation context */
+    if (!sd->ws_fragment_ctx) {
+        sd->ws_fragment_ctx = calloc(1, sizeof(ws_fragmentation_ctx_t));
+        if (!sd->ws_fragment_ctx) {
+            LOGE(TAG, LOG_FMT("Failed to allocate WS fragmentation context"));
+            return ESP_ERR_NO_MEM;
+        }
+        // Store the context pointer and set a free function to clean it up when the session closes
+        httpd_sess_set_ctx(req->handle, httpd_req_to_sockfd(req), sd->ws_fragment_ctx, httpd_ws_free_fragmentation_ctx);
+    }
+    ws_fragmentation_ctx_t *ws_frg_ctx = (ws_fragmentation_ctx_t *)sd->ws_fragment_ctx;
+
     /* Read the first byte from the frame to get the FIN flag and Opcode */
     /* Please refer to RFC6455 Section 5.2 for more details */
     uint8_t first_byte = 0;
@@ -1119,6 +1326,10 @@ esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
         /* If the recv() return code is <= 0, then this socket FD is invalid (i.e. a broken connection) */
         /* Here we mark it as a Close message and close it later. */
         LOGW(TAG, LOG_FMT("Failed to read header byte (socket FD invalid), closing socket now"));
+
+        // If we were in fragmentation, reset state to avoid issues on next connection
+        ws_frg_ctx->in_fragmentation = false;
+        ws_frg_ctx->reassembled_len = 0;
         aux->ws_final = true;
         aux->ws_type = HTTPD_WS_TYPE_CLOSE;
         return ESP_OK;
@@ -1129,8 +1340,59 @@ esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
     /* Decode the FIN flag and Opcode from the byte */
     aux->ws_final = (first_byte & HTTPD_WS_FIN_BIT) != 0;
     aux->ws_type = (first_byte & HTTPD_WS_OPCODE_BITS);
+    LOGD(TAG, "httpd_ws_get_frame_type: aux->ws_type (decoded): %d (0x%02X)", aux->ws_type, aux->ws_type);
 
-    /* If userspace requests control frames, do not deal with the control frames */
+    /* Control frames must not be fragmented. Mask is NOT_FINAL & (CLOSE || PING || PONG). */
+    if (!aux->ws_final && (aux->ws_type == HTTPD_WS_TYPE_PING || aux->ws_type == HTTPD_WS_TYPE_PONG || aux->ws_type == HTTPD_WS_TYPE_CLOSE)) {
+        LOGW(TAG, LOG_FMT("Received fragmented control frame (type %d), protocol violation"), aux->ws_type);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (ws_frg_ctx->in_fragmentation) {
+        // Allow CONTINUATION and CONTROL frames (PING/PONG/CLOSE) during fragmentation as per RFC 6455 Section 5.4
+        if (aux->ws_type != HTTPD_WS_TYPE_CONTINUE && !(aux->ws_type >= 0x8 && aux->ws_type <= 0xF)) {
+            LOGW(TAG, LOG_FMT("Expected CONTINUATION or CONTROL frame but got (0x%x) during fragmentation"), aux->ws_type);
+            ws_frg_ctx->in_fragmentation = false; // Reset fragmentation state
+            ws_frg_ctx->reassembled_len = 0;
+            // Send CLOSE frame with protocol error (1002) as per RFC 6455 Section 7.4.1
+            httpd_ws_frame_t close_frame = {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                .len = 2
+            };
+            httpd_ws_send_frame(req, &close_frame);
+            return ESP_OK; // CLOSE frame sent, normal completion
+        }
+    } else {
+        // Not in fragmentation, expect TEXT or BINARY (or control frame)
+        if (aux->ws_type == HTTPD_WS_TYPE_CONTINUE) {
+            LOGW(TAG, LOG_FMT("Received CONTINUATION frame (0x%x) but no active fragmentation"), aux->ws_type);
+            // Send CLOSE frame with protocol error (1002) as per RFC 6455 Section 7.4.1
+            httpd_ws_frame_t close_frame = {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                .len = 2
+            };
+            httpd_ws_send_frame(req, &close_frame);
+            return ESP_OK; // CLOSE frame sent, normal completion
+        }
+
+        // If it's a non-final TEXT or BINARY frame, start fragmentation
+        if (!aux->ws_final && (aux->ws_type == HTTPD_WS_TYPE_TEXT || aux->ws_type == HTTPD_WS_TYPE_BINARY)) {
+            ws_frg_ctx->in_fragmentation = true;
+            // Store the initial frame type (TEXT or BINARY) for the reassembled message
+            ws_frg_ctx->message_type = aux->ws_type;
+            LOGD(TAG, LOG_FMT("Started fragmentation with message_type=%d"), ws_frg_ctx->message_type);
+        }
+    }
+
+    LOGD(TAG, LOG_FMT("Fragmentation state: active=%d, length=%zu"), ws_frg_ctx->in_fragmentation, ws_frg_ctx->reassembled_len);
+
+     /* If userspace requests control frames, do not deal with the control frames */
     if (!sd->ws_control_frames) {
         LOGD(TAG, LOG_FMT("Handler not requests control frames"));
 
@@ -1231,10 +1493,11 @@ esp_err_t httpd_ws_send_data(httpd_handle_t handle, int socket, httpd_ws_frame_t
 
     event_group_bits_t status = event_group_wait_bits(transfer_done, WS_SEND_OK | WS_SEND_FAILED,
                                              true, false, (uint32_t)-1);
+    LOGD(TAG, "httpd_ws_send_data: Event group status for FD %d: 0x%lx", socket, status);
 
     event_group_delete(transfer_done);
 
-    return (status & WS_SEND_OK) ? ESP_OK : ESP_FAIL;
+    return (status & WS_SEND_OK) ? ESP_OK : (status & WS_SEND_FAILED ? ESP_FAIL : ESP_ERR_TIMEOUT); // Return timeout if neither OK nor FAILED
 }
 
 esp_err_t httpd_ws_send_data_async(httpd_handle_t handle, int socket, httpd_ws_frame_t *frame,

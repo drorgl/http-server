@@ -767,7 +767,10 @@ static void httpd_req_cleanup(httpd_req_t *r)
     /* Close the socket when a WebSocket Close request is received */
     if (ra->sd->ws_close) {
         LOGD(TAG, LOG_FMT("Try closing WS connection at FD: %d"), ra->sd->fd);
-        httpd_sess_trigger_close(r->handle, ra->sd->fd);
+        if (httpd_sess_trigger_close(r->handle, ra->sd->fd) != ESP_OK) {
+            LOGW(TAG, LOG_FMT("Failed to queue WS close, closing synchronously"));
+            httpd_sess_delete(r->handle, ra->sd);
+        }
     }
 #endif
 

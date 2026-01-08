@@ -70,9 +70,13 @@ void esp_http_server_dispatch_event(int32_t event_id, const void* event_data, si
 
 static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
 {
+    /* Check if server has capacity for new connections */
+    bool has_capacity = httpd_is_sess_available(hd);
+
     /* If no space is available for new session, close the least recently used one */
     if (hd->config.lru_purge_enable == true) {
-        if (!httpd_is_sess_available(hd)) {
+        if (!has_capacity) {
+            LOGD(TAG, LOG_FMT("no session slots available, closing LRU session"));
             /* Queue asynchronous closure of the least recently used session */
             return httpd_sess_close_lru(hd);
             /* Returning from this allows the main server thread to process
@@ -82,6 +86,12 @@ static esp_err_t httpd_accept_conn(struct httpd_data *hd, int listen_fd)
              * with space available for one session
              */
         }
+    } else if (!has_capacity) {
+        /* No LRU purging enabled, reject connection to prevent exceeding max_open_sockets */
+        LOGW(TAG, LOG_FMT("connection rejected - max_open_sockets (%d) limit reached"),
+             hd->config.max_open_sockets);
+        /* Let select() timeout briefly to prevent busy-waiting, then allow retry */
+        return ESP_OK;
     }
 
     struct sockaddr_storage addr_from;
@@ -334,7 +344,7 @@ static esp_err_t httpd_server(struct httpd_data *hd)
 {
     fd_set read_set;
     FD_ZERO(&read_set);
-    struct timeval timeout = { .tv_sec = 0, .tv_usec = 100000 }; // 100 ms timeout
+    struct timeval timeout = { .tv_sec = 0, .tv_usec = 1000000 }; // 100 ms timeout
     if (hd->config.lru_purge_enable || httpd_is_sess_available(hd)) {
         /* Only listen for new connections if server has capacity to
          * handle more (or when LRU purge is enabled, in which case

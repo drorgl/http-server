@@ -127,6 +127,8 @@ initializer that should be kept in sync
 #define ESP_ERR_HTTPD_RESP_SEND         (ESP_ERR_HTTPD_BASE +  6)   /*!< Error occurred while sending response packet */
 #define ESP_ERR_HTTPD_ALLOC_MEM         (ESP_ERR_HTTPD_BASE +  7)   /*!< Failed to dynamically allocate memory for resource */
 #define ESP_ERR_HTTPD_TASK              (ESP_ERR_HTTPD_BASE +  8)   /*!< Failed to launch server task/thread */
+#define ESP_ERR_HTTPD_WS_ERR_FRAGMENT_PROTOCOL (ESP_ERR_HTTPD_BASE +  9) /*!< WebSocket fragmentation protocol error */
+#define ESP_ERR_HTTPD_WS_PENDING_FRAGMENT (ESP_ERR_HTTPD_BASE + 10) /*!< WebSocket message is fragmented and more fragments are expected */
 
 /* Symbol to be used as length parameter in httpd_resp_send APIs
  * for setting buffer length to string length */

@@ -2,6 +2,44 @@
 
 This document outlines known technical debt items that require future attention for improved reliability and maintainability.
 
+## Test Framework Memory Safety (HIGH PRIORITY - RESOLVED/CONFIRMED)
+
+### Problem Description
+Test code violating AGENTS.md zero-initialization requirement causes SIGSEGV when WebSocket URI handlers contain garbage pointers in optional fields, leading to `_strdup()` crashes on invalid memory addresses.
+
+### Root Cause
+- AGENTS.md requires `memset(struct, 0, sizeof(struct))` for all test structs
+- WebSocket `httpd_uri_t` struct has optional fields (`supported_subprotocol`, `supported_extensions`)
+- Test setup functions fail to zero-initialize, leaving garbage pointers
+- `httpd_register_uri_handler()` safely handles NULL but not garbage non-NULL pointers
+- `_strdup()` called on invalid address causes segmentation fault
+
+### Impact
+- **High:** Random SIGSEGV crashes in WebSocket security tests
+- **High:** Test unreliability and CI failures
+- **Medium:** Potential for similar issues in other test structs
+
+### Evidence
+```
+Thread 1 received signal SIGSEGV, Segmentation fault.
+0x00007ffff61312b3 in ucrtbase!_strdup () from C:\WINDOWS\System32\ucrtbase.dll
+#1  0x00007ff791533a21 in httpd_register_uri_handler (handle=0x6cd8b0, uri_handler=0x5ffda0)
+    at lib\http-server\src\httpd_uri.c:215
+#2  setup_websocket_security_server() test_websocket_security.cpp
+```
+
+### Solution Implemented
+**Description:** Add `memset(ws_uri, 0, sizeof(*ws_uri))` in setup functions
+**Implementation:**
+- Modified `setup_websocket_security_server()` to zero-initialize struct
+- Ensures WebSocket optional fields default to NULL rather than garbage
+- Aligns test code with AGENTS.md policy requirements
+
+**Complexity:** Low
+**Risk:** None (compliance fix)
+**Timeline:** 15 minutes
+**Testing:** WebSocket security test suite now passes consistently
+
 ## Option 2: Control Socket Port Isolation (HIGH PRIORITY)
 
 ### Problem Description
@@ -208,11 +246,15 @@ See Option 2 evidence above, plus code complexity in:
 3. Simplify cross-platform socket compatibility requirements
 
 ## Status
+- **WebSocket API Contract Violation:** RESOLVED - `httpd_ws_recv_frame()` function not populating `frame->len`, `frame->type`, and `frame->final` fields in header-only mode (`max_len=0`), causing echo handlers to skip payload reception and send empty responses. Fixed by ensuring all output parameters are populated before function return.
+- **WebSocket Fragmentation Deadlock:** RESOLVED - Root cause analysis revealed fragmentation test handlers deadlocked due to inappropriate use of async `httpd_ws_send_data()` API in synchronous WebSocket handler context. Fixed by replacing with synchronous `httpd_ws_send_frame()` API. Core fragmentation protocol implementation was correct; issue was handler-level API misuse causing handler threads to wait for their own completion callbacks.
+- **WebSocket Fragmentation Tests:** RESOLVED - All 8 fragmentation tests now pass, validating 2/3 fragment messages, binary fragments, large messages, control frame interleaving, invalid sequences, buffer overflows, and concurrent fragmentation isolation.
 - **HTTP/1.1 Connection Persistence Implementation:** RESOLVED - Core server implementation verified and documented; erroneous middleware-based E2E tests removed; test organization violations corrected per quality gates.
 - **Session Context Memory Issue:** RESOLVED - Fixed req->sess_ctx preservation across requests, preventing nullification during memset operations.
 - **Connection Closure Regressions:** RESOLVED - Reverted premature session closure after response; now only closes on explicit client request or async completion to prevent WebSocket/WebSocket async test failures.
 - **Control Socket Timing Issue:** RESOLVED - Reverted select timeout to 100ms from 200ms, optimizing for test performance and reducing "control socket fd not ready" errors.
 - **Buffer Garbage Issue in Tests:** RESOLVED - Added memset initialization in test handlers to prevent atoi parsing of uninitialized memory.
+- **Test Framework Memory Safety:** RESOLVED - Fixed WebSocket security test SIGSEGV by adding mandatory struct zero-initialization, ensuring compliance with AGENTS.md requirements and preventing _strdup() crashes on garbage pointers.
 - **Select() Invalid FD Race Condition:** RESOLVED - Implemented fd validation guard rails in httpd_sess_set_descriptors() and improved select error handling. All connection persistence tests now pass consistently.
 - **Control Socket Port Conflicts:** OPEN - Technical Debt
 - **Control Socket Architecture:** OPEN - Technical Debt

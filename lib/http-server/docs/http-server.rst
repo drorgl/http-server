@@ -71,6 +71,21 @@ The HTTP server component provides WebSocket support. The WebSocket feature can 
 :example:`protocols/http_server/ws_extensions_server` demonstrates advanced WebSocket functionality including extension negotiation as per RFC 6455 Section 9, showing both standard and extension-enabled endpoints.
 
 
+WebSocket Handler API Patterns
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Critical: Synchronous vs Asynchronous APIs**
+
+WebSocket request handlers execute synchronously and block the connection thread. Extreme care must be taken when selecting transmission APIs:
+
+* **✅ CORRECT**: ``httpd_ws_send_frame(req, &frame)`` - Synchronous completion, safe for handlers
+* **❌ INCORRECT**: ``httpd_ws_send_data(handle, sockfd, &frame)`` - Asynchronous, causes deadlocks
+
+Using asynchronous APIs like ``httpd_ws_send_data`` in WebSocket handlers creates circular waits: the handler thread waits for completion callbacks that cannot execute while the handler blocks the connection.
+
+This was the root cause of fragmentation test failures - proper implementation with complex debugging showed WebSocket fragmentation worked correctly, but handler API misuse caused deadlocks that appeared as "broken" functionality.
+
+
 WebSocket Pre-Handshake Callback
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

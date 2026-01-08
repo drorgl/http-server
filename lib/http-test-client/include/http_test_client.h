@@ -227,6 +227,40 @@ http_test_client_err_t ws_test_client_recv_frame(http_test_client_handle_t *clie
  */
 void ws_test_client_free_frame(ws_test_frame_t *frame);
 
+/**
+ * @brief Helper to automatically fragment and send large messages
+ * @param client Test client handle
+ * @param message Complete message buffer
+ * @param message_len Message length
+ * @param first_opcode Initial OPCODE (TEXT/BINARY)
+ * @param fragment_size Target fragment payload size (excluding header)
+ * @param timeout_ms Timeout for sending fragments
+ * @return Success/error status
+ */
+http_test_client_err_t ws_test_client_send_fragmented_message(
+    http_test_client_handle_t *client,
+    const char *message,
+    size_t message_len,
+    ws_frame_type_t first_opcode,
+    size_t fragment_size,
+    uint32_t timeout_ms
+);
+
+/**
+ * @brief Helper to receive and reassemble fragmented messages
+ * @param client Test client handle
+ * @param reassembled_message Output buffer for complete message
+ * @param message_len Output message length
+ * @param timeout_ms Receive timeout
+ * @return Success/error status with automatic reassembly
+ */
+http_test_client_err_t ws_test_client_recv_fragmented_message(
+    http_test_client_handle_t *client,
+    char **reassembled_message,
+    size_t *message_len,
+    uint32_t timeout_ms
+);
+
 #ifdef __cplusplus
 }
 #endif

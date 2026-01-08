@@ -205,13 +205,13 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
             hd->hd_calls[i]->handle_ws_control_frames = uri_handler->handle_ws_control_frames;
             
             // Guard: Add check for valid pointer range/garbage before strdup
-            if (uri_handler->supported_subprotocol && (uintptr_t)uri_handler->supported_subprotocol > 0x1000) {
+            if (uri_handler->supported_subprotocol) {
                 hd->hd_calls[i]->supported_subprotocol = strdup(uri_handler->supported_subprotocol);
             } else {
                 hd->hd_calls[i]->supported_subprotocol = NULL;
             }
             
-            if (uri_handler->supported_extensions && (uintptr_t)uri_handler->supported_extensions > 0x1000) {
+            if (uri_handler->supported_extensions) {
                 hd->hd_calls[i]->supported_extensions = strdup(uri_handler->supported_extensions);
             } else {
                 hd->hd_calls[i]->supported_extensions = NULL;
@@ -352,10 +352,18 @@ esp_err_t httpd_uri(struct httpd_data *hd)
     /* Attach user context data (passed during URI registration) into request */
     req->user_ctx = uri->user_ctx;
 
-    /* Final step for a WebSocket handshake verification */
+    /* WebSocket handshake handling - validate BEFORE sending 101 response */
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     struct httpd_req_aux   *aux = req->aux;
     if (uri->is_websocket && aux->ws_handshake_detect && uri->method == HTTP_GET) {
+        /* Call handler for security validation FIRST */
+        if (uri->handler(req) != ESP_OK) {
+            /* Handler validation failed - Reject WebSocket upgrade without sending 101 */
+            LOGW(TAG, LOG_FMT("WS handler validation failed - rejecting upgrade"));
+            return ESP_FAIL;
+        }
+
+        /* Handler approved - now send 101 and complete upgrade */
         LOGD(TAG, LOG_FMT("Responding WS handshake to sock %d"), aux->sd->fd);
         esp_err_t ret = httpd_ws_respond_server_handshake(&hd->hd_req, uri->supported_subprotocol, uri->supported_extensions);
         if (ret != ESP_OK) {
@@ -369,10 +377,13 @@ esp_err_t httpd_uri(struct httpd_data *hd)
 
         /* Mark connection as WebSocket for connection persistence */
         httpd_connection_mark_websocket(hd, aux->sd->fd);
+
+        /* WebSocket upgrade complete - no further handler call needed */
+        return ESP_OK;
     }
 #endif
 
-    /* Invoke handler */
+    /* Invoke handler for non-WebSocket requests */
     if (uri->handler(req) != ESP_OK) {
         /* Handler returns error, this socket should be closed */
         LOGW(TAG, LOG_FMT("uri handler execution failed"));

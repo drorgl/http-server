@@ -810,7 +810,9 @@ http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *clie
     size_t header_len = 0;
 
     // Byte 0: FIN + RSV + Opcode
-    header[header_len++] = (frame->fin ? 0x80 : 0x00) | frame->type;
+    // Per RFC 6455 Section 5.4, control frames MUST NOT be fragmented (FIN must be 1)
+    bool force_fin = (frame->type >= WS_TYPE_CLOSE && frame->type <= WS_TYPE_PONG);
+    header[header_len++] = (force_fin || frame->fin ? 0x80 : 0x00) | frame->type;
 
     // Byte 1: Mask + Payload Length
     uint8_t mask_bit = frame->masked ? 0x80 : 0x00;
@@ -950,6 +952,8 @@ http_test_client_err_t ws_test_client_recv_frame(http_test_client_handle_t *clie
             }
         }
         frame->payload[frame->payload_len] = '\0'; // Null-terminate for text frames
+
+        LOGD_BUFFER_HEXDUMP(TAG, frame->payload, frame->payload_len, "Client received frame: type=%d, fin=%d, len=%zu", frame->type, frame->fin, frame->payload_len);
     }
 
     return HTTP_TEST_CLIENT_OK;
@@ -1046,4 +1050,143 @@ const char* http_test_client_get_header(const http_test_response_t *response, co
     }
 
     return NULL; // Header not found
+}
+
+http_test_client_err_t ws_test_client_send_fragmented_message(
+    http_test_client_handle_t *client,
+    const char *message,
+    size_t message_len,
+    ws_frame_type_t first_opcode,
+    size_t fragment_size,
+    uint32_t timeout_ms
+) {
+    if (client == NULL || message == NULL || message_len == 0 || fragment_size == 0) {
+        return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
+    }
+    if (client->sockfd == -1) {
+        return HTTP_TEST_CLIENT_ERR_CONNECT;
+    }
+
+    size_t remaining = message_len;
+    size_t offset = 0;
+    bool first_fragment = true;
+    uint8_t mask[4] = {0x37, 0xFA, 0x21, 0x3D}; // Fixed mask for testing
+
+    int fragment_index = 0;
+    while (remaining > 0) {
+        size_t current_fragment_size = (remaining > fragment_size) ? fragment_size : remaining;
+        // Ensure we don't send beyond the message length
+        if (offset + current_fragment_size > message_len) {
+            current_fragment_size = message_len - offset;
+        }
+        bool is_final = (remaining == current_fragment_size);
+
+        ws_test_frame_t frame = {
+            .type = first_fragment ? first_opcode : WS_TYPE_CONTINUATION,
+            .fin = is_final,
+            .masked = true,
+            .mask = {mask[0], mask[1], mask[2], mask[3]},
+            .payload = (uint8_t*)message + offset,
+            .payload_len = current_fragment_size
+        };
+
+        LOGD_BUFFER_HEXDUMP(TAG, (uint8_t*)message + offset, current_fragment_size, "Client sending fragment %d: offset=%zu, len=%zu", fragment_index, offset, current_fragment_size);
+
+        http_test_client_err_t err = ws_test_client_send_frame(client, &frame, timeout_ms);
+        if (err != HTTP_TEST_CLIENT_OK) {
+            return err;
+        }
+
+        offset += current_fragment_size;
+        remaining -= current_fragment_size;
+        first_fragment = false;
+    }
+
+    return HTTP_TEST_CLIENT_OK;
+}
+
+http_test_client_err_t ws_test_client_recv_fragmented_message(
+    http_test_client_handle_t *client,
+    char **reassembled_message,
+    size_t *message_len,
+    uint32_t timeout_ms
+) {
+    if (client == NULL || reassembled_message == NULL || message_len == NULL) {
+        return HTTP_TEST_CLIENT_ERR_INVALID_ARG;
+    }
+    if (client->sockfd == -1) {
+        return HTTP_TEST_CLIENT_ERR_CONNECT;
+    }
+
+    *reassembled_message = NULL;
+    *message_len = 0;
+
+    uint8_t *buffer = NULL;
+    size_t buffer_size = 0;
+    size_t buffer_used = 0;
+
+    while (true) {
+        ws_test_frame_t frame;
+        http_test_client_err_t err = ws_test_client_recv_frame(client, &frame, timeout_ms);
+        if (err != HTTP_TEST_CLIENT_OK) {
+            free(buffer);
+            return err;
+        }
+
+        // Validate fragmentation rules
+        if (buffer_used == 0) {
+            // First frame should not be continuation
+            if (frame.type == WS_TYPE_CONTINUATION) {
+                ws_test_client_free_frame(&frame);
+                free(buffer);
+                return HTTP_TEST_CLIENT_ERR_PROTOCOL;
+            }
+        } else {
+            // Subsequent frames should be continuation
+            if (frame.type != WS_TYPE_CONTINUATION) {
+                ws_test_client_free_frame(&frame);
+                free(buffer);
+                return HTTP_TEST_CLIENT_ERR_PROTOCOL;
+            }
+        }
+
+        // Resize buffer if needed
+        while (buffer_used + frame.payload_len > buffer_size) {
+            size_t new_size = buffer_size ? buffer_size * 2 : 1024;
+            uint8_t *new_buffer = (uint8_t*) realloc(buffer, new_size);
+            if (!new_buffer) {
+                ws_test_client_free_frame(&frame);
+                free(buffer);
+                return HTTP_TEST_CLIENT_ERR_GENERIC;
+            }
+            buffer = new_buffer;
+            buffer_size = new_size;
+        }
+
+        // Copy payload
+        memcpy(buffer + buffer_used, frame.payload, frame.payload_len);
+        buffer_used += frame.payload_len;
+
+        ws_test_client_free_frame(&frame);
+
+        // Check if this is the final fragment
+        if (frame.fin) {
+            break;
+        }
+    }
+
+    // Shrink buffer to exact size
+    if (buffer_used > 0) {
+        uint8_t *exact_buffer = (uint8_t*) realloc(buffer, buffer_used + 1); // +1 for null terminator
+        if (!exact_buffer) {
+            free(buffer);
+            return HTTP_TEST_CLIENT_ERR_GENERIC;
+        }
+        buffer = exact_buffer;
+        buffer[buffer_used] = '\0'; // Null terminate
+    }
+
+    *reassembled_message = (char*)buffer;
+    *message_len = buffer_used;
+    return HTTP_TEST_CLIENT_OK;
 }

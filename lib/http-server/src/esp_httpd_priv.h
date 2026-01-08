@@ -58,6 +58,26 @@ extern "C" {
 // #define LOG_FMT(x)      "%s: " x, __func__
 #define LOG_FMT(x)      x
 
+/* ************** Group: WebSocket ************** */
+/** @name WebSocket
+ * Structures for WebSocket support
+ * @{
+ */
+
+/**
+ * @brief WebSocket fragmentation context for reassembling fragmented messages
+ */
+typedef struct {
+    char reassembled_buffer[4096];    /*!< 4KB reassembly buffer */
+    size_t reassembled_len;           /*!< Current buffer usage */
+    bool in_fragmentation;           /*!< Fragmentation state flag */
+    uint8_t message_type;            /*!< Original opcode of the first fragment in a fragmented message */
+} ws_fragmentation_ctx_t;
+
+/** End of WebSocket related structures
+ * @}
+ */
+
 /**
  * @brief Thread related data for internal use
  */
@@ -99,6 +119,7 @@ struct sock_db {
     esp_err_t (*ws_handler)(httpd_req_t *r);   /*!< WebSocket handler, leave to null if it's not WebSocket */
     bool ws_control_frames;                         /*!< WebSocket flag indicating that control frames should be passed to user handlers */
     void *ws_user_ctx;                         /*!< Pointer to user context data which will be available to handler for websocket*/
+    ws_fragmentation_ctx_t *ws_fragment_ctx;    /*!< WebSocket fragmentation context */
 #endif
 };
 
