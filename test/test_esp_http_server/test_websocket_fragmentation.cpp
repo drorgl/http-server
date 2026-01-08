@@ -19,6 +19,8 @@
 #include <netinet/in.h>
 #endif
 
+#include <cctype>
+
 #include "test_websocket_fragmentation.h"
 
 #define TEST_TIMEOUT_MS 2000
@@ -35,6 +37,13 @@ const int WS_DISCONNECTED_BIT = BIT1;
 const int WS_FRAME_SENT_BIT = BIT2;
 const int WS_SEND_FAILED_BIT = BIT3;
 
+// Static close status code arrays for WebSocket close frames
+static const uint8_t WS_CLOSE_CODE_1002[] = {0x03, 0xEA}; // Protocol Error
+static const uint8_t WS_CLOSE_CODE_1003[] = {0x03, 0xEB}; // Unsupported Data
+static const uint8_t WS_CLOSE_CODE_1008[] = {0x03, 0xF0}; // Policy Violation
+static const uint8_t WS_CLOSE_CODE_1010[] = {0x03, 0xF2}; // Extension Required
+static const uint8_t WS_CLOSE_CODE_1011[] = {0x03, 0xF3}; // Server Error
+
 /**
  * @brief Send a WebSocket close frame with protocol error status (1002)
  */
@@ -44,7 +53,7 @@ static esp_err_t ws_send_protocol_error_close(httpd_req_t *req)
         .final = true,
         .fragmented = false,
         .type = HTTPD_WS_TYPE_CLOSE,
-        .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 (Protocol Error) in network byte order
+        .payload = WS_CLOSE_CODE_1002, // Status code 1002 (Protocol Error) in network byte order
         .len = 2
     };
     return httpd_ws_send_frame(req, &close_frame);
@@ -118,7 +127,7 @@ static esp_err_t ws_fragmentation_reassembling_handler(httpd_req_t *req)
                 .final = true,
                 .fragmented = false,
                 .type = HTTPD_WS_TYPE_CLOSE,
-                .payload = (uint8_t[]){0x03, 0xF0}, // Status code 1008 (Policy Violation) in network byte order
+                .payload = WS_CLOSE_CODE_1008, // Status code 1008 (Policy Violation) in network byte order
                 .len = 2
             };
             httpd_ws_send_frame(req, &close_frame);
@@ -221,7 +230,7 @@ static esp_err_t ws_send_server_error_close(httpd_req_t *req)
         .final = true,
         .fragmented = false,
         .type = HTTPD_WS_TYPE_CLOSE,
-        .payload = (uint8_t[]){0x03, 0xF3}, // Status code 1011 (Server Error) in network byte order
+        .payload = WS_CLOSE_CODE_1011, // Status code 1011 (Server Error) in network byte order
         .len = 2
     };
     return httpd_ws_send_frame(req, &close_frame);
@@ -236,7 +245,7 @@ static esp_err_t ws_send_extension_required_close(httpd_req_t *req)
         .final = true,
         .fragmented = false,
         .type = HTTPD_WS_TYPE_CLOSE,
-    .payload = (uint8_t[]){0x03, 0xF2}, // Status code 1010 (Extension Required) in network byte order
+        .payload = WS_CLOSE_CODE_1010, // Status code 1010 (Extension Required) in network byte order
         .len = 2
     };
     return httpd_ws_send_frame(req, &close_frame);
@@ -350,7 +359,7 @@ static esp_err_t ws_text_only_handler(httpd_req_t *req)
             .final = true,
             .fragmented = false,
             .type = HTTPD_WS_TYPE_CLOSE,
-            .payload = (uint8_t[]){0x03, 0xEB}, // Status code 1003 (Unsupported Data) in network byte order
+            .payload = WS_CLOSE_CODE_1003, // Status code 1003 (Unsupported Data) in network byte order
             .len = 2
         };
         httpd_ws_send_frame(req, &close_frame);
