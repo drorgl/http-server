@@ -1,9 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2018-2024 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #ifndef TEST_HTTP_METHODS_H
 #define TEST_HTTP_METHODS_H
 

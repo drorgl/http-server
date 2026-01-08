@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../lib/http-server-middleware/include/middleware_cors.h"
+#include <middleware_cors.h>
 
 // Mocking support for CORS testing
 static int mock_get_hdr_call_count = 0;

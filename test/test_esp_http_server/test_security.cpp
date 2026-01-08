@@ -1,9 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 /**
  * @file test_security.cpp
  * @brief Security-focused tests for HTTP server (RFC 9112 compliance)

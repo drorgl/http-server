@@ -1,9 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2018-2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #include <unity.h>
 #include <http_server.h>
 #include <log.h>

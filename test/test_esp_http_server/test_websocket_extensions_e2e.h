@@ -1,9 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #ifndef _TEST_WEBSOCKET_EXTENSIONS_E2E_H_
 #define _TEST_WEBSOCKET_EXTENSIONS_E2E_H_
 
