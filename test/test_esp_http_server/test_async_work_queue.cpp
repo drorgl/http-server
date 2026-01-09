@@ -45,6 +45,7 @@ static void generate_async_resp(void *arg)
 
 static esp_err_t async_get_handler(httpd_req_t *req)
 {
+    httpd_resp_set_hdr(req, "Connection", "keep-alive");
     httpd_resp_send(req, "Hello World!", HTTPD_RESP_USE_STRLEN);
 
     struct async_resp_arg *resp_arg = (struct async_resp_arg *)malloc(sizeof(struct async_resp_arg));
