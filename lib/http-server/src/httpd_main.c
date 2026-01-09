@@ -513,7 +513,7 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
         return ESP_FAIL;
     }
 
-    int ctrl_fd = cs_create_ctrl_sock(hd->config.ctrl_port);
+    int ctrl_fd = cs_create_ctrl_sock(&hd->config.ctrl_port);
     if (ctrl_fd < 0) {
         LOGE(TAG, LOG_FMT("error in creating ctrl socket (%d) for port %d"), errno, hd->config.ctrl_port);
         close(fd);

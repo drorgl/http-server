@@ -51,7 +51,7 @@ typedef struct httpd_connection_config {
 extern "C" {
 #endif
 
-#define ESP_HTTPD_DEF_CTRL_PORT         (32768)    /*!< HTTP Server control socket port*/
+#define ESP_HTTPD_DEF_CTRL_PORT         (0)    /*!< HTTP Server control socket port*/
 
 ESP_EVENT_DECLARE_BASE(ESP_HTTP_SERVER_EVENT);
 

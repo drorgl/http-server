@@ -20,6 +20,8 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
+
 /**
  * @brief Create a control socket
  *
@@ -37,7 +39,7 @@ extern "C" {
  * @return - the socket descriptor that can be added to the fd_set in select.
  *         - an error code if less than zero
  */
-int cs_create_ctrl_sock(int port);
+int cs_create_ctrl_sock(uint16_t *port);
 
 /**
  * @brief Free the control socket

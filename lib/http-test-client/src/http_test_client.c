@@ -821,7 +821,7 @@ http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *clie
         return HTTP_TEST_CLIENT_ERR_CONNECT; // Not connected
     }
 
-    uint8_t header[10]; // Max header size for 64-bit length + mask
+    uint8_t header[16]; // Max header size for 64-bit length + mask (14 bytes max)
     size_t header_len = 0;
 
     // Byte 0: FIN + RSV + Opcode
@@ -838,8 +838,8 @@ http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *clie
         header[header_len++] = (frame->payload_len >> 8) & 0xFF;
         header[header_len++] = frame->payload_len & 0xFF;
     } else {
+        // 64-bit length (network byte order) - requires extended length header
         header[header_len++] = mask_bit | 127;
-        // 64-bit length (network byte order)
         header[header_len++] = (frame->payload_len >> 56) & 0xFF;
         header[header_len++] = (frame->payload_len >> 48) & 0xFF;
         header[header_len++] = (frame->payload_len >> 40) & 0xFF;
@@ -848,6 +848,7 @@ http_test_client_err_t ws_test_client_send_frame(http_test_client_handle_t *clie
         header[header_len++] = (frame->payload_len >> 16) & 0xFF;
         header[header_len++] = (frame->payload_len >> 8) & 0xFF;
         header[header_len++] = frame->payload_len & 0xFF;
+        LOGD(TAG, "WS frame sending with 64-bit length: %" PRIu64, (uint64_t)frame->payload_len);
     }
 
     // Masking key

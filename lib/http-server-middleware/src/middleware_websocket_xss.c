@@ -48,7 +48,7 @@ esp_err_t middleware_websocket_xss(httpd_req_t *req,
             // Close WebSocket connection with proper close code
             // Send close frame manually as RFC 6455 close handling
             const char *reason = "Unsupported Data";
-            uint8_t close_payload[15] = {0};  // Status code (2 bytes) + reason
+            uint8_t close_payload[17] = {0};  // Status code (2 bytes) + reason (15 bytes)
             close_payload[0] = (1003 >> 8) & 0xFF;  // Status code in network byte order (big-endian)
             close_payload[1] = 1003 & 0xFF;
             memcpy(&close_payload[2], reason, strlen(reason));
@@ -93,7 +93,7 @@ esp_err_t middleware_websocket_xss(httpd_req_t *req,
                 }
                 // Fallback to blocking if sanitization fails
                 const char *reason = "Unsupported Data";
-                uint8_t close_payload[15] = {0};  // Status code (2 bytes) + reason
+                uint8_t close_payload[17] = {0};  // Status code (2 bytes) + reason (15 bytes)
                 close_payload[0] = (1003 >> 8) & 0xFF;  // Status code in network byte order (big-endian)
                 close_payload[1] = 1003 & 0xFF;
                 memcpy(&close_payload[2], reason, strlen(reason));

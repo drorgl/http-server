@@ -34,14 +34,14 @@ static const char * TAG = "ctrl-sock";
 /* Control socket, because in some network stacks select can't be woken up any
  * other way
  */
-int cs_create_ctrl_sock(int port)
+int cs_create_ctrl_sock(uint16_t *port)
 {
 #if !LOOPBACK_ENABLED
     LOGE(TAG, "Please enable LWIP_NETIF_LOOPBACK for %s API", __func__);
     return -1;
 #endif
 
-    LOGD(TAG, "creating control socket on port %d", port);
+    LOGD(TAG, "creating control socket on port %d", *port);
     int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (fd < 0) {
         LOGE(TAG, "error creating control socket (%d)", errno);
@@ -55,17 +55,17 @@ int cs_create_ctrl_sock(int port)
 #if IPV4_ENABLED
     struct sockaddr_in *addr4 = (struct sockaddr_in *)&addr;
     addr4->sin_family = AF_INET;
-    addr4->sin_port = htons(port);
+    addr4->sin_port = htons(*port);
     inet_aton("127.0.0.1", &addr4->sin_addr);
     addr_len = sizeof(struct sockaddr_in);
-    LOGD(TAG, "binding to IPv4 address 127.0.0.1:%d", port);
+    LOGD(TAG, "binding to IPv4 address 127.0.0.1:%d", *port);
 #else
     struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addr;
     addr6->sin6_family = AF_INET6;
-    addr6->sin6_port = htons(port);
+    addr6->sin6_port = htons(*port);
     inet6_aton("::1", &addr6->sin6_addr);
     addr_len = sizeof(struct sockaddr_in6);
-    LOGD(TAG, "binding to IPv6 address ::1:%d", port);
+    LOGD(TAG, "binding to IPv6 address ::1:%d", *port);
 #endif
     int enable = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(enable)) < 0) {
@@ -96,10 +96,18 @@ int cs_create_ctrl_sock(int port)
     if (getsockname(fd, (struct sockaddr *)&local_addr, &local_addr_len) == 0) {
         if (local_addr.ss_family == AF_INET) {
             struct sockaddr_in *local_addr4 = (struct sockaddr_in *)&local_addr;
-            LOGD(TAG, "socket fd=%d bound to local address 127.0.0.1:%d", fd, ntohs(local_addr4->sin_port));
+            uint16_t actual_port = ntohs(local_addr4->sin_port);
+            LOGD(TAG, "socket fd=%d bound to local address 127.0.0.1:%d", fd, actual_port);
+            if (*port == 0) {
+                *port = actual_port;
+            }
         } else if (local_addr.ss_family == AF_INET6) {
             struct sockaddr_in6 *local_addr6 = (struct sockaddr_in6 *)&local_addr;
-            LOGD(TAG, "socket fd=%d bound to local address ::1:%d", fd, ntohs(local_addr6->sin6_port));
+            uint16_t actual_port = ntohs(local_addr6->sin6_port);
+            LOGD(TAG, "socket fd=%d bound to local address ::1:%d", fd, actual_port);
+            if (*port == 0) {
+                *port = actual_port;
+            }
         }
     } else {
         LOGE(TAG, "error getting local address for socket fd=%d (%d)", fd, errno);
