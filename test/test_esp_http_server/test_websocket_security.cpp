@@ -120,26 +120,44 @@ static bool validate_basic_auth(const char *auth_header, const char *expected_us
 
 esp_err_t ws_security_handler(httpd_req_t *req)
 {
-    if (req->method != HTTP_GET) {
+    // Handle WebSocket handshake (initial HTTP GET request)
+    if (req->method == HTTP_GET) {
+        ws_security_context_t *ctx = (ws_security_context_t *)req->user_ctx;
+
+        char origin[256] = "";
+        httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin));
+
+        // Validate Origin
+        if (ctx && strlen(origin) > 0 && strcmp(origin, ctx->allowed_origin) == 0) {
+            // Valid origin, proceed with handshake
+            return ESP_OK;
+        }
+
+        // Invalid origin, send HTTP 403 error per RFC 6455 Section 10.2
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Invalid Origin");
+
+        // Invalid origin, abort handshake
         return ESP_FAIL;
     }
 
-    ws_security_context_t *ctx = (ws_security_context_t *)req->user_ctx;
-
-    char origin[256] = "";
-    httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin));
-
-    // Validate Origin
-    if (ctx && strlen(origin) > 0 && strcmp(origin, ctx->allowed_origin) == 0) {
-        // Valid origin, proceed with handshake
-        return ESP_OK;
+    // Handle WebSocket messages (post-handshake) - echo them back
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.payload = (uint8_t *)malloc(128);
+    if (!ws_pkt.payload) {
+        return ESP_ERR_NO_MEM;
     }
 
-    // Invalid origin, send HTTP 403 error per RFC 6455 Section 10.2
-    httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Invalid Origin");
+    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 128);
+    if (ret != ESP_OK) {
+        free(ws_pkt.payload);
+        return ret;
+    }
 
-    // Invalid origin, abort handshake
-    return ESP_FAIL;
+    /* Echo the message back (simple echo handler) */
+    ret = httpd_ws_send_frame(req, &ws_pkt);
+    free(ws_pkt.payload);
+    return ret;
 }
 
 esp_err_t ws_strict_security_handler(httpd_req_t *req)
@@ -1102,10 +1120,13 @@ esp_err_t ws_session_fixation_handler(httpd_req_t *req)
                     }
                 }
             }
-        } else if (strncmp(payload_str, "SESSION:", 8) == 0) {
+        } else if (strncmp(safe_payload, "SESSION:", 8) == 0) {
             // Check if user knows the current valid session token
             uint32_t provided_token;
-            if (sscanf(payload_str + 8, "%" PRIu32, &provided_token) == 1) {
+            if (sscanf(safe_payload + 8, "%" PRIu32, &provided_token) == 1) {
+                LOGD(TAG, "Provided token parsed: %"PRIu32, provided_token);
+                LOGD(TAG, "Context session token: %"PRIu32, ctx->session_token);
+                LOGD(TAG, "Tokens match: %d", (provided_token == ctx->session_token));
                 if (provided_token == ctx->session_token) {
                     const char *valid_msg = "SESSION_VALID";
                     httpd_ws_frame_t valid_frame = {
