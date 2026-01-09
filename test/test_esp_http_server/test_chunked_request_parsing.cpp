@@ -137,12 +137,19 @@ void test_chunked_request_basic(void)
     sleep_ms(200);
 
     char buf[1024] = {0};
-    int len = recv(sock, buf, sizeof(buf) - 1, 0);
-    LOGD(TAG, LOG_FMT("recv len = %d"), len);
-    if (len > 0) {
-        LOGD_BUFFER_HEXDUMP(TAG, buf, len, "received data");
+    int total_len = 0;
+    int len;
+    while ((len = recv(sock, buf + total_len, sizeof(buf) - 1 - total_len, 0)) > 0) {
+        total_len += len;
+        buf[total_len] = '\0';
+        // Continue receiving until connection closes or we have the body
+        if (strstr(buf, "OK: 11 bytes")) break;
     }
-    TEST_ASSERT_GREATER_THAN(0, len);
+    LOGD(TAG, LOG_FMT("total recv len = %d"), total_len);
+    if (total_len > 0) {
+        LOGD_BUFFER_HEXDUMP(TAG, buf, total_len, "received data");
+    }
+    TEST_ASSERT_GREATER_THAN(0, total_len);
     TEST_ASSERT_NOT_NULL(strstr(buf, "OK: 11 bytes"));
 
     close(sock);
@@ -186,8 +193,15 @@ void test_chunked_request_invalid_size(void)
     sleep_ms(200);
 
     char buf[1024] = {0};
-    int len = recv(sock, buf, sizeof(buf) - 1, 0);
-    TEST_ASSERT_GREATER_THAN(0, len);
+    int total_len = 0;
+    int len;
+    while ((len = recv(sock, buf + total_len, sizeof(buf) - 1 - total_len, 0)) > 0) {
+        total_len += len;
+        buf[total_len] = '\0';
+        // Continue receiving until connection closes
+        if (strstr(buf, "400 Bad Request")) break;
+    }
+    TEST_ASSERT_GREATER_THAN(0, total_len);
     TEST_ASSERT_NOT_NULL(strstr(buf, "400 Bad Request"));
 
     close(sock);
@@ -233,8 +247,15 @@ void test_chunked_request_trailer_security(void)
     sleep_ms(200);
 
     char buf[1024] = {0};
-    int len = recv(sock, buf, sizeof(buf) - 1, 0);
-    TEST_ASSERT_GREATER_THAN(0, len);
+    int total_len = 0;
+    int len;
+    while ((len = recv(sock, buf + total_len, sizeof(buf) - 1 - total_len, 0)) > 0) {
+        total_len += len;
+        buf[total_len] = '\0';
+        // Continue receiving until connection closes
+        if (strstr(buf, "400 Bad Request")) break;
+    }
+    TEST_ASSERT_GREATER_THAN(0, total_len);
     TEST_ASSERT_NOT_NULL(strstr(buf, "400 Bad Request"));
 
     close(sock);
@@ -280,12 +301,19 @@ void test_chunked_request_uppercase_hex(void)
     sleep_ms(200);
 
     char buf[1024] = {0};
-    int len = recv(sock, buf, sizeof(buf) - 1, 0);
-    LOGD(TAG, LOG_FMT("recv len = %d"), len);
-    if (len > 0) {
-        LOGD_BUFFER_HEXDUMP(TAG, buf, len, "received data");
+    int total_len = 0;
+    int len;
+    while ((len = recv(sock, buf + total_len, sizeof(buf) - 1 - total_len, 0)) > 0) {
+        total_len += len;
+        buf[total_len] = '\0';
+        // Continue receiving until connection closes or we have the body
+        if (strstr(buf, "OK: 10 bytes")) break;
     }
-    TEST_ASSERT_GREATER_THAN(0, len);
+    LOGD(TAG, LOG_FMT("recv len = %d"), total_len);
+    if (total_len > 0) {
+        LOGD_BUFFER_HEXDUMP(TAG, buf, total_len, "received data");
+    }
+    TEST_ASSERT_GREATER_THAN(0, total_len);
     TEST_ASSERT_NOT_NULL(strstr(buf, "OK: 10 bytes"));
 
     close(sock);
