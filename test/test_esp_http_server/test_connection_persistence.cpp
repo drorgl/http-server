@@ -7,6 +7,7 @@
 // Test helper function to create a mock HTTP server instance
 static httpd_handle_t create_test_server() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config.max_open_sockets = 3;  // Small number for testing
     config.max_uri_handlers = 8;
 
