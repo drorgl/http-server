@@ -326,8 +326,22 @@ void test_request_smuggling_content_length_mismatch(void)
         .uri      = "/post_data",
         .method   = HTTP_POST,
         .handler  = [](httpd_req_t *req) {
+            // Get expected Content-Length
+            char cl_str[32] = {0};
+            int content_len = 0;
+            if (httpd_req_get_hdr_value_str(req, "Content-Length", cl_str, sizeof(cl_str)) == ESP_OK) {
+                content_len = atoi(cl_str);
+            }
+
             char buffer[512];
             int received_bytes = httpd_req_recv(req, buffer, sizeof(buffer));
+
+            // Validate Content-Length compliance for security
+            if (content_len > 0 && received_bytes < content_len) {
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Incomplete request body");
+                return ESP_FAIL;
+            }
+
             char response[128];
             snprintf(response, sizeof(response), "Received %d bytes", received_bytes);
             httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
