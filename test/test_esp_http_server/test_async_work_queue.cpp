@@ -17,6 +17,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <errno.h>
 #endif
 
 #define TEST_TIMEOUT_MS 4000
@@ -90,8 +91,35 @@ void given_server_with_async_work_queue_handler_when_client_gets_then_receives_t
     event_group_wait_bits(async_work_queue_event_group, ASYNC_WORK_DONE_BIT, false, true, TEST_TIMEOUT_MS);
 
     char buffer[100] = {0};
-    recv(client->sockfd, buffer, sizeof(buffer) - 1, 0);
-    TEST_ASSERT_EQUAL_STRING("Hello from async work", buffer);
+    // Modified to handle recv return values and loop until data arrives or timeout
+    int bytes_received = 0;
+    int attempts = 0;
+    const int max_attempts = 10; // Prevent infinite loop
+    while (bytes_received == 0 && attempts < max_attempts) {
+#ifdef _WIN32
+        bytes_received = recv(client->sockfd, buffer, sizeof(buffer) - 1, 0);
+#else
+        bytes_received = recv(client->sockfd, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_received == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            // No data available yet, try again
+            attempts++;
+            usleep(100000); // 100ms delay before retry
+            continue;
+        }
+#endif
+        if (bytes_received < 0) {
+            // Other error
+            break;
+        }
+        attempts++;
+    }
+
+    // Ensure we received the expected string
+    if (bytes_received > 0) {
+        TEST_ASSERT_EQUAL_STRING("Hello from async work", buffer);
+    } else {
+        TEST_FAIL_MESSAGE("Failed to receive async response");
+    }
 
     http_test_client_disconnect(client);
     httpd_stop(handle);
