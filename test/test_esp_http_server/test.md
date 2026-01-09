@@ -111,6 +111,7 @@ Tests follow `given_[setup]_when_[action]_then_[expected_result]` naming pattern
 void given_valid_httpd_config_when_httpd_start_is_called_then_returns_success(void) {
     // Arrange
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     httpd_handle_t handle = NULL;
 
     // Act
