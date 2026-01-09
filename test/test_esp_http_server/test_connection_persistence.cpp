@@ -335,6 +335,7 @@ void test_default_config_connection_persistence(void) {
 void test_connection_max_requests_limit(void) {
     // Create server with custom config for max requests = 2
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config.connection_config.max_requests_per_conn = 2;
 
     httpd_handle_t server;
@@ -370,6 +371,7 @@ void test_connection_max_requests_limit(void) {
 void test_connection_idle_timeout(void) {
     // Create server with short idle timeout
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config.connection_config.max_idle_sec = 2; // 2 seconds
 
     httpd_handle_t server;
@@ -406,6 +408,7 @@ void test_connection_idle_timeout(void) {
 void test_connection_lifetime_limit(void) {
     // Create server with short lifetime limit
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config.connection_config.max_lifetime_sec = 2; // 2 seconds
 
     httpd_handle_t server;
@@ -439,6 +442,7 @@ void test_connection_lifetime_limit(void) {
 void test_connection_websocket_ignores_limits(void) {
     // Create server with strict limits
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config.connection_config.max_requests_per_conn = 1;
     config.connection_config.max_idle_sec = 1;
 
@@ -481,9 +485,11 @@ void test_connection_websocket_ignores_limits(void) {
 void test_connection_config_access(void) {
     // Test that different config values produce different behaviors
     httpd_config_t config_no_limits = HTTPD_DEFAULT_CONFIG();
+    config_no_limits.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config_no_limits.connection_config.max_requests_per_conn = 0; // Unlimited
 
     httpd_config_t config_with_limits = HTTPD_DEFAULT_CONFIG();
+    config_with_limits.server_port = 0;  // Use dynamic port assignment to avoid privileged port issues
     config_with_limits.connection_config.max_requests_per_conn = 1; // Limited
 
     httpd_handle_t server1, server2;
