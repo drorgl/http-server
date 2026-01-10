@@ -916,8 +916,7 @@ void given_fragmented_message_when_control_frame_interspersed_then_handled_corre
     TEST_ASSERT_NOT_NULL(ws_event_group);
 
     httpd_handle_t handle = NULL;
-    httpd_uri_t ws_uri;
-    memset(ws_uri, 0, sizeof(httpd_uri_t));
+    httpd_uri_t ws_uri = {0};
 
 
     // Use custom config to disable mask key validation for this test
