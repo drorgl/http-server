@@ -210,7 +210,7 @@ esp_err_t httpd_register_uri_handler(httpd_handle_t handle,
             } else {
                 hd->hd_calls[i]->supported_subprotocol = NULL;
             }
-            
+
             if (uri_handler->supported_extensions) {
                 hd->hd_calls[i]->supported_extensions = strdup(uri_handler->supported_extensions);
             } else {
@@ -243,6 +243,14 @@ esp_err_t httpd_unregister_uri_handler(httpd_handle_t handle,
             LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
 
             free((char*)hd->hd_calls[i]->uri);
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+            if (hd->hd_calls[i]->supported_subprotocol) {
+                free((char*)hd->hd_calls[i]->supported_subprotocol);
+            }
+            if (hd->hd_calls[i]->supported_extensions) {
+                free((char*)hd->hd_calls[i]->supported_extensions);
+            }
+#endif
             free(hd->hd_calls[i]);
             hd->hd_calls[i] = NULL;
 
@@ -281,6 +289,14 @@ esp_err_t httpd_unregister_uri(httpd_handle_t handle, const char *uri)
             LOGD(TAG, LOG_FMT("[%d] removing %s"), i, uri);
 
             free((char*)hd->hd_calls[i]->uri);
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+            if (hd->hd_calls[i]->supported_subprotocol) {
+                free((char*)hd->hd_calls[i]->supported_subprotocol);
+            }
+            if (hd->hd_calls[i]->supported_extensions) {
+                free((char*)hd->hd_calls[i]->supported_extensions);
+            }
+#endif
             free(hd->hd_calls[i]);
             hd->hd_calls[i] = NULL;
             found = true;
@@ -312,6 +328,14 @@ void httpd_unregister_all_uri_handlers(struct httpd_data *hd)
         LOGD(TAG, LOG_FMT("[%d] removing %s"), i, hd->hd_calls[i]->uri);
 
         free((char*)hd->hd_calls[i]->uri);
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+        if (hd->hd_calls[i]->supported_subprotocol) {
+            free((char*)hd->hd_calls[i]->supported_subprotocol);
+        }
+        if (hd->hd_calls[i]->supported_extensions) {
+            free((char*)hd->hd_calls[i]->supported_extensions);
+        }
+#endif
         free(hd->hd_calls[i]);
         hd->hd_calls[i] = NULL;
     }

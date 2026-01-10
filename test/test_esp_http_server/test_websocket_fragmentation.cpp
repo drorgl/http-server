@@ -237,6 +237,11 @@ static esp_err_t ws_binary_fragmentation_handler(httpd_req_t *req)
         LOGD(TAG, "ws_binary_fragmentation_handler: httpd_ws_send_frame returned %d", send_ret);
         free(response_buf);
 
+        // Free API allocated payload
+        if (ws_pkt.api_allocated_payload) {
+            free(ws_pkt.payload);
+        }
+
         return send_ret != ESP_OK ? send_ret :ESP_OK;
     }
     return ESP_OK;
@@ -346,6 +351,11 @@ static esp_err_t ws_server_error_handler(httpd_req_t *req)
         LOGD(TAG, "ws_server_error_handler: httpd_ws_send_frame returned %d", send_ret);
         free(response_buf);
 
+        // Free API allocated payload
+        if (ws_pkt.api_allocated_payload) {
+            free(ws_pkt.payload);
+        }
+
         return send_ret != ESP_OK ? send_ret : ESP_OK;
     }
 
@@ -407,6 +417,11 @@ static esp_err_t ws_text_only_handler(httpd_req_t *req)
         esp_err_t send_ret = httpd_ws_send_frame(req, &response);
         LOGD(TAG, "ws_text_only_handler: httpd_ws_send_frame returned %d", send_ret);
         free(response_buf);
+
+        // Free API allocated payload
+        if (ws_pkt.api_allocated_payload) {
+            free(ws_pkt.payload);
+        }
 
         return send_ret != ESP_OK ? send_ret : ESP_OK;
     }
