@@ -66,7 +66,7 @@ void given_server_with_ws_handler_when_client_sends_upgrade_request_then_handsha
 {
     // Given: A running server with a registered WebSocket URI handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9017; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -151,7 +151,7 @@ void given_ws_connection_when_sending_and_receiving_data_then_frames_are_exchang
 {
     // Given: A running server with a registered WebSocket URI handler for data frames
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9018; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -277,7 +277,7 @@ void given_ws_connection_when_client_sends_close_frame_then_server_responds_with
 {
     // Given: A running server with a registered WebSocket URI handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9019; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -399,7 +399,7 @@ void given_websocket_and_http_clients_when_calling_httpd_ws_get_fd_info_then_ret
 {
     // Given: A running server with registered HTTP and WebSocket URI handlers
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9020; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -476,7 +476,7 @@ void given_server_with_long_subprotocol_when_client_requests_ws_upgrade_then_han
 {
     // Given: A running server with a WebSocket handler configured with a very long subprotocol
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9021; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -553,7 +553,7 @@ void given_ws_connection_when_sending_frame_with_16bit_length_then_succeeds(void
 {
     // Given: A running server with a registered WebSocket URI handler for data frames
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9022; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -629,7 +629,7 @@ void given_ws_connection_when_sending_frame_with_64bit_length_then_succeeds(void
 {
     // Given: A running server with a registered WebSocket URI handler for data frames
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9023; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -706,7 +706,7 @@ void given_ws_connection_when_client_sends_ping_then_server_responds_with_pong(v
 {
     // Given: A running server with a registered WebSocket URI handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9024; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -774,7 +774,7 @@ void given_ws_connection_when_idle_then_keep_alive_maintains_connection(void)
 {
     // Given: A running server with a short recv_wait_timeout
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9025; // Use a unique port
+    config.server_port = 0; // Use a unique port
     config.recv_wait_timeout = 2; // 2 seconds
 
     httpd_handle_t handle = NULL;
@@ -838,7 +838,7 @@ void given_server_with_ws_extensions_when_client_requests_upgrade_then_extension
 {
     // Given: A running server with WebSocket URI supporting extensions
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9026; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -919,7 +919,7 @@ void given_server_with_ws_extensions_when_client_offers_unsupported_then_no_exte
 {
     // Given: A running server with WebSocket URI supporting specific extensions
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9027; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

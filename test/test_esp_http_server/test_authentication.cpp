@@ -109,7 +109,7 @@ void given_protected_resource_when_no_auth_header_then_401_unauthorized_returned
 {
     // Given: A running server with a protected resource that requires authentication
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9031; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -169,7 +169,7 @@ void given_basic_auth_credentials_when_valid_then_access_granted(void)
 {
     // Given: A running server with Basic authentication protection
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9032; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -227,7 +227,7 @@ void given_basic_auth_credentials_when_invalid_then_access_denied(void)
 {
     // Given: A running server with Basic authentication protection
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9033; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -292,7 +292,7 @@ void given_authentication_info_when_successful_then_header_included(void)
 {
     // Given: A running server that includes Authentication-Info after successful auth
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9034; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -355,7 +355,7 @@ void given_multiple_auth_schemes_when_offered_then_client_can_choose(void)
 {
     // Given: A running server that supports multiple authentication schemes
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9035; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -419,7 +419,7 @@ void given_malformed_auth_header_when_provided_then_400_bad_request(void)
 {
     // Given: A running server with authentication protection
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9036; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -477,7 +477,7 @@ void given_invalid_base64_auth_when_provided_then_access_denied(void)
 {
     // Given: A running server with Basic authentication protection
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9037; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -535,7 +535,7 @@ void given_wrong_scheme_auth_when_provided_then_access_denied(void)
 {
     // Given: A running server that only accepts Basic authentication
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9038; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

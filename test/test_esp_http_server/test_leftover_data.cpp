@@ -48,7 +48,7 @@ static esp_err_t leftover_data_post_handler(httpd_req_t *req)
 void given_server_with_leftover_data_handler_when_client_posts_then_server_handles_it_gracefully(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9030;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

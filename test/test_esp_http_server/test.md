@@ -170,7 +170,7 @@ void given_valid_httpd_config_when_httpd_start_is_called_then_returns_success(vo
 {
     // Setup: Manually initialize resources
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8080;  // Use unique port to avoid conflicts
+    config.server_port = 0;  // Use unique port or 0 to avoid conflicts
     httpd_handle_t handle = NULL;
     esp_err_t ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
@@ -196,7 +196,7 @@ For complex test scenarios, category files may use static helper functions for s
 // Static helper functions for test fixture management
 static httpd_handle_t test_server_create(uint16_t port) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, ret);  // Fail test if server creation fails

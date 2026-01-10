@@ -189,7 +189,7 @@ void test_websocket_extensions_backward_compatibility()
 {
     // Test server setup
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9026; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -279,7 +279,7 @@ void test_websocket_extensions_uri_registration()
 {
     // Test server setup
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9027; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

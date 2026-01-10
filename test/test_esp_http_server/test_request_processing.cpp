@@ -36,7 +36,7 @@ void given_valid_request_when_calling_httpd_req_get_url_query_len_then_returns_q
 {
     // Given: Started HTTP server with registered handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8085;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -131,7 +131,7 @@ void given_valid_request_when_calling_httpd_req_get_hdr_value_len_then_returns_h
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8086;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);

@@ -52,7 +52,7 @@ void given_server_without_uri_handler_when_client_requests_unregistered_uri_then
 {
     // Given: A running server with no registered handler for the requested URI
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9007; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -85,7 +85,7 @@ void given_registered_uri_handler_for_get_when_post_request_then_405_method_not_
 {
     // Given: A running server with a GET handler registered for a specific URI
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9008; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -129,7 +129,7 @@ void given_server_running_when_request_without_version_is_sent_then_505_version_
 {
     // Given: A running server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9003;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -174,7 +174,7 @@ void given_server_running_when_long_uri_request_is_sent_then_414_uri_too_long_is
 {
     // Given: A running server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9004; // Use a different port
+    config.server_port = 0; // Use a different port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -214,7 +214,7 @@ void given_server_running_when_long_header_request_is_sent_then_431_req_hdr_fiel
 {
     // Given: A running server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9005; // Use a different port
+    config.server_port = 0; // Use a different port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -259,7 +259,7 @@ void given_server_with_custom_error_handler_when_error_occurs_then_handler_is_in
 {
     // Given: A running server with a custom error handler registered for 404 Not Found
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9016; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -432,7 +432,7 @@ void given_request_with_less_content_length_when_sent_then_server_handles_correc
 {
     // Given: A running server with a POST handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9010; // Use a unique port
+    config.server_port = 0; // Use a unique port
     config.recv_wait_timeout = 1; // Short timeout for quicker test failure
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
@@ -558,7 +558,7 @@ void given_request_with_more_content_length_when_sent_then_server_handles_correc
 {
     // Given: A running server with a POST handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9011; // Use a unique port
+    config.server_port = 0; // Use a unique port
     config.recv_wait_timeout = 1; // Short timeout for quicker test failure
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
@@ -640,7 +640,7 @@ void given_server_running_when_http_10_request_sent_then_request_accepted(void)
 {
     // Given: A running server with a GET handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9020; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -696,7 +696,7 @@ void given_server_running_when_http_11_request_sent_then_request_accepted(void)
 {
     // Given: A running server with a GET handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9021; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -743,7 +743,7 @@ void given_server_running_when_http_2_0_request_sent_then_505_version_unsupporte
 {
     // Given: A running server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9022; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -787,7 +787,7 @@ void given_server_running_when_http_0_9_request_sent_then_505_version_unsupporte
 {
     // Given: A running server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9023; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -831,7 +831,7 @@ void given_server_running_when_invalid_major_version_request_sent_then_505_versi
 {
     // Given: A running server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9024; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -875,7 +875,7 @@ void given_server_running_when_http_1_0_with_keep_alive_then_connection_handled_
 {
     // Given: A running server with GET handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9025; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

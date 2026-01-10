@@ -39,7 +39,7 @@ void given_valid_httpd_config_when_httpd_start_is_called_then_returns_success(vo
 {
     // Given: Valid HTTP server configuration
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8080;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     
     // When: HTTP server is started with valid config
@@ -83,7 +83,7 @@ void given_started_server_when_httpd_stop_is_called_then_server_stops(void)
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8081;
+    config.server_port = 0;
     esp_err_t start_ret = httpd_start(&test_server_handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
     TEST_ASSERT_NOT_NULL(test_server_handle);
@@ -125,7 +125,7 @@ void given_started_server_when_calling_httpd_stop_multiple_times_then_handles_gr
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8091;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);

@@ -37,7 +37,7 @@ void given_valid_server_when_calling_httpd_get_client_list_then_returns_client_f
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8090;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -70,7 +70,7 @@ void given_server_with_lru_enabled_when_max_sockets_exceeded_then_oldest_session
 {
     // Given: A running server with LRU enabled and max_open_sockets = 1
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9002;
+    config.server_port = 0;
     config.max_open_sockets = 1;
     config.lru_purge_enable = true;
     httpd_handle_t handle = NULL;
@@ -158,7 +158,7 @@ void given_server_with_open_close_callbacks_when_client_connects_and_disconnects
 {
     // Given: A running server with open_fn and close_fn callbacks registered
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9006; // Use a unique port
+    config.server_port = 0; // Use a unique port
     config.open_fn = mock_open_fn;
     config.close_fn = mock_close_fn;
     httpd_handle_t handle = NULL;
@@ -205,7 +205,7 @@ void given_server_with_multiple_clients_when_rapid_connections_then_server_handl
 {
     // Given: A running server with a limited number of open sockets
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9020; // Use a unique port
+    config.server_port = 0; // Use a unique port
     config.max_open_sockets = 5; // Limit to 5 concurrent connections
     config.lru_purge_enable = false; // Disable LRU to test explicit rejection
     httpd_handle_t handle = NULL;

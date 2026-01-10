@@ -21,7 +21,6 @@
 
 #include "httpd_chunked.h"
 
-#define TEST_PORT 9016
 #define TEST_TIMEOUT_MS 5000
 
 static esp_err_t chunked_response_handler(httpd_req_t *req)
@@ -45,7 +44,7 @@ void test_chunked_response_basic(void)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = TEST_PORT;
+    config.server_port = 0;
     config.lru_purge_enable = false;
     config.max_open_sockets = 4;
 
@@ -66,7 +65,7 @@ void test_chunked_response_basic(void)
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(TEST_PORT);
+    dest_addr.sin_port = htons(config.server_port);
     TEST_ASSERT_EQUAL(0, connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)));
 
     const char *req = "GET /chunked HTTP/1.1\r\n"

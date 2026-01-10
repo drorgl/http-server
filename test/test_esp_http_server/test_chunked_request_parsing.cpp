@@ -24,7 +24,6 @@
 
 static const char * TAG = "test_chunked_request_parsing";
 
-#define TEST_PORT 9017
 #define TEST_TIMEOUT_MS 5000
 
 static esp_err_t chunked_request_handler(httpd_req_t *req)
@@ -101,7 +100,7 @@ void test_chunked_request_basic(void)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = TEST_PORT;
+    config.server_port = 0;
     config.lru_purge_enable = false;
 
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&server, &config));
@@ -121,7 +120,7 @@ void test_chunked_request_basic(void)
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(TEST_PORT);
+    dest_addr.sin_port = htons(config.server_port);
     TEST_ASSERT_EQUAL(0, connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)));
 
     const char *chunked_req = "POST /chunked_req HTTP/1.1\r\n"
@@ -160,7 +159,7 @@ void test_chunked_request_invalid_size(void)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = TEST_PORT + 1;
+    config.server_port = 0;
     config.lru_purge_enable = false;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&server, &config));
 
@@ -178,7 +177,7 @@ void test_chunked_request_invalid_size(void)
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(TEST_PORT + 1);
+    dest_addr.sin_port = htons(config.server_port);
     TEST_ASSERT_EQUAL(0, connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)));
 
     const char *invalid_req = "POST /bad_chunk HTTP/1.1\r\n"
@@ -212,7 +211,7 @@ void test_chunked_request_trailer_security(void)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = TEST_PORT + 2;
+    config.server_port = 0;
     config.lru_purge_enable = false;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&server, &config));
 
@@ -230,7 +229,7 @@ void test_chunked_request_trailer_security(void)
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(TEST_PORT + 2);
+    dest_addr.sin_port = htons(config.server_port);
     TEST_ASSERT_EQUAL(0, connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)));
 
     const char *invalid_req = "POST /bad_trailer HTTP/1.1\r\n"
@@ -266,7 +265,7 @@ void test_chunked_request_uppercase_hex(void)
 {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = TEST_PORT + 3;
+    config.server_port = 0;
     config.lru_purge_enable = false;
 
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&server, &config));
@@ -286,7 +285,7 @@ void test_chunked_request_uppercase_hex(void)
     struct sockaddr_in dest_addr;
     dest_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port = htons(TEST_PORT + 3);
+    dest_addr.sin_port = htons(config.server_port);
     TEST_ASSERT_EQUAL(0, connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)));
 
     const char *chunked_req = "POST /chunked_upper HTTP/1.1\r\n"

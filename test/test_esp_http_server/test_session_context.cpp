@@ -79,7 +79,7 @@ void given_server_with_session_handler_when_client_posts_then_context_is_maintai
     TEST_ASSERT_NOT_NULL(session_context_event_group);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9029;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

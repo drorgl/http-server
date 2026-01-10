@@ -536,7 +536,7 @@ static esp_err_t httpd_server_init(struct httpd_data *hd)
     return ESP_OK;
 }
 
-static struct httpd_data *httpd_create(const httpd_config_t *config)
+static struct httpd_data *httpd_create(httpd_config_t *config)
 {
     /* Allocate memory for httpd instance data */
     struct httpd_data *hd = calloc(1, sizeof(struct httpd_data));
@@ -595,7 +595,7 @@ static void httpd_delete(struct httpd_data *hd)
     free(hd);
 }
 
-esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config)
+esp_err_t httpd_start(httpd_handle_t *handle, httpd_config_t *config)
 {
     if (handle == NULL || config == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -619,10 +619,12 @@ esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config)
     }
 
     struct httpd_data *hd = httpd_create(config);
+    
     if (hd == NULL) {
         /* Failed to allocate memory */
         return ESP_ERR_HTTPD_ALLOC_MEM;
     }
+
 #if CONFIG_HTTPD_QUEUE_WORK_BLOCKING
     /* Using a Counting Semaphore with count equals CONFIG_LWIP_UDP_RECVMBOX_SIZE
      * as the number of UDP messages which can be stored is equal to UDP mailbox size.
@@ -640,6 +642,8 @@ esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config)
         httpd_delete(hd);
         return ESP_FAIL;
     }
+
+    config->server_port = hd->config.server_port;
 
     httpd_sess_init(hd);
     if (httpd_os_thread_create(&hd->hd_td.handle, "httpd",

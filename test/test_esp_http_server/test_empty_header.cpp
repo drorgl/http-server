@@ -63,7 +63,7 @@ static esp_err_t test_header_get_handler(httpd_req_t *req)
 void given_server_with_empty_header_handler_when_client_sends_request_with_empty_header_then_it_is_handled_correctly(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9032;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

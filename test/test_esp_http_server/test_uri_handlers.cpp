@@ -36,7 +36,7 @@ void given_server_started_when_registering_valid_uri_handler_then_returns_succes
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8082;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -70,7 +70,7 @@ void given_null_handler_when_registering_uri_handler_then_returns_invalid_arg(vo
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8083;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -97,7 +97,7 @@ void given_registered_uri_handler_when_unregistering_same_handler_then_returns_s
 {
     // Given: Started HTTP server with registered handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8084;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -134,7 +134,7 @@ void given_server_with_max_handlers_when_exceeding_limit_then_handlers_full_erro
     // Given: Server with small max_uri_handlers limit
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 2;  // Very low limit for testing
-    config.server_port = 8088;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -185,7 +185,7 @@ void given_duplicate_handler_registration_when_attempting_then_returns_handler_e
 {
     // Given: Started server with registered handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8089;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -222,7 +222,7 @@ void given_multiple_handlers_for_same_uri_when_unregistering_uri_then_all_handle
 {
     // Given: Started HTTP server with multiple handlers for the same URI
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8095; // Use a different port
+    config.server_port = 0; // Use a different port
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);

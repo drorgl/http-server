@@ -81,7 +81,7 @@ void test_response_splitting_prevention_in_custom_headers(void)
 {
     // Given: A running server with an handler that tests header validation
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9012;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -146,7 +146,7 @@ void test_crlf_injection_protection_in_header_values(void)
 {
     // Given: A running server with handler that tests Location header validation
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9013;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -205,7 +205,7 @@ void test_header_injection_attack_prevention_in_error_messages(void)
 {
     // Given: A running server with custom error handler that uses user input in error message
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9014;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -252,7 +252,7 @@ void test_header_field_name_injection_prevention(void)
 {
     // Given: A running server that echoes header values
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9015;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -318,7 +318,7 @@ void test_request_smuggling_content_length_mismatch(void)
 
     // Given: A server that processes POST requests with explicit Content-Length
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9016;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -408,7 +408,7 @@ void test_response_splitting_prevention_in_custom_status(void)
 {
     // Given: A server with handler that uses custom status lines
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9017;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

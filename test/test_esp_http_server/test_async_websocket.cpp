@@ -228,7 +228,7 @@ void given_ws_connection_when_sending_sync_from_another_task_then_succeeds(void)
     TEST_ASSERT_NOT_NULL(ws_event_group);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9024;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -305,7 +305,7 @@ void given_ws_connection_when_sending_async_from_another_task_then_succeeds(void
     TEST_ASSERT_NOT_NULL(ws_event_group);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9025;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -378,7 +378,7 @@ void given_closed_ws_connection_when_sending_sync_then_fails(void)
     TEST_ASSERT_NOT_NULL(ws_event_group);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9026;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -449,7 +449,7 @@ void given_closed_ws_connection_when_sending_async_then_callback_receives_error(
     TEST_ASSERT_NOT_NULL(ws_event_group);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9027;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -498,7 +498,7 @@ void given_ws_connection_when_sending_fragment_message_from_another_task_then_re
     TEST_ASSERT_NOT_NULL(ws_event_group);
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9028;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

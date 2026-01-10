@@ -284,10 +284,10 @@ esp_err_t ws_auth_security_handler(httpd_req_t *req)
 
 
 
-void setup_websocket_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin, uint16_t port)
+uint16_t setup_websocket_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     ws_security_context_t *ctx = (ws_security_context_t *)malloc(sizeof(ws_security_context_t));
@@ -301,12 +301,13 @@ void setup_websocket_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri
     ws_uri->user_ctx = ctx;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
+    return config.server_port;
 }
 
-void setup_websocket_strict_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin, uint16_t port)
+uint16_t setup_websocket_strict_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     ws_security_context_t *ctx = (ws_security_context_t *)malloc(sizeof(ws_security_context_t));
@@ -320,14 +321,14 @@ void setup_websocket_strict_security_server(httpd_handle_t *handle, httpd_uri_t 
     ws_uri->user_ctx = ctx;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
-
+    return config.server_port;
 }
 
-void setup_websocket_auth_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin,
-                                          const char *username, const char *password, uint16_t port)
+uint16_t setup_websocket_auth_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin,
+                                          const char *username, const char *password)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     ws_auth_context_t *ctx = (ws_auth_context_t *)malloc(sizeof(ws_auth_context_t));
@@ -344,7 +345,7 @@ void setup_websocket_auth_security_server(httpd_handle_t *handle, httpd_uri_t *w
     ws_uri->user_ctx = ctx;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
-
+    return config.server_port;
 }
 
 void teardown_websocket_security_server(httpd_handle_t handle, httpd_uri_t *ws_uri)
@@ -360,8 +361,7 @@ void given_websocket_handshake_with_invalid_origin_then_connection_rejected(void
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9030;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -393,8 +393,7 @@ void given_websocket_connection_from_malicious_site_then_no_cookie_leak(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9031;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -426,8 +425,7 @@ void given_websocket_upgrade_with_auth_tokens_in_url_then_not_logged(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9032;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -463,8 +461,7 @@ void given_websocket_unmasked_client_frame_then_connection_closed(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9033;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -533,8 +530,7 @@ void given_websocket_allow_all_origin_policy_then_explicitly_prohibited(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9034;
-    setup_websocket_strict_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_strict_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -566,8 +562,7 @@ void given_websocket_strict_origin_validation_requires_origin_header(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9035;
-    setup_websocket_strict_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_strict_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -607,8 +602,7 @@ void given_massive_websocket_connection_attempts_then_limited_and_rate_limited(v
     // Given: A WebSocket server with limited connection capacity
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9036;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     // Attempt to create many more connections than the server can handle
     const int max_clients = 20; // Much higher than max_open_sockets (7)
@@ -685,8 +679,7 @@ void given_websocket_connection_spam_from_single_ip_then_auto_blocked(void)
     // Given: A WebSocket server monitoring for abusive connection patterns
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9037;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     // Simulate rapid connection attempts from same IP (127.0.0.1)
     const int rapid_attempts = 15; // More than reasonable for legitimate usage
@@ -753,8 +746,7 @@ void given_websocket_upgrade_without_authentication_then_connection_failed(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9038;
-    setup_websocket_auth_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, "testuser", "testpass", port);
+    uint16_t port = setup_websocket_auth_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, "testuser", "testpass");
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -808,8 +800,7 @@ void given_websocket_auth_via_url_params_then_securely_handled(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9039;
-    setup_websocket_auth_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, "testuser", "testpass", port);
+    uint16_t port = setup_websocket_auth_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, "testuser", "testpass");
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -860,8 +851,7 @@ void given_websocket_max_frame_size_exceeded_then_connection_closed(void)
     // Given: A WebSocket server accepting connections
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9040;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -943,8 +933,7 @@ void given_websocket_invalid_mask_key_then_frame_rejected(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9041;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -1190,12 +1179,12 @@ esp_err_t ws_session_fixation_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-void setup_websocket_session_fixation_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin,
+uint16_t setup_websocket_session_fixation_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, const char *allowed_origin,
                                              const char *guest_user, const char *guest_pass,
-                                             const char *admin_user, const char *admin_pass, uint16_t port)
+                                             const char *admin_user, const char *admin_pass)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     ws_session_fixation_context_t *ctx = (ws_session_fixation_context_t *)malloc(sizeof(ws_session_fixation_context_t));
@@ -1215,6 +1204,7 @@ void setup_websocket_session_fixation_server(httpd_handle_t *handle, httpd_uri_t
     ws_uri->user_ctx = ctx;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
+    return config.server_port;
 }
 
 /**
@@ -1235,9 +1225,8 @@ void given_websocket_session_fixation_attempt_then_session_refreshed(void)
     // Given: WebSocket server with session-based authentication
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9080;
-    setup_websocket_session_fixation_server(&handle, &ws_uri, ALLOWED_ORIGIN,
-                                           "guest", "guest123", "admin", "admin456", port);
+    uint16_t port = setup_websocket_session_fixation_server(&handle, &ws_uri, ALLOWED_ORIGIN,
+                                           "guest", "guest123", "admin", "admin456");
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -1390,8 +1379,7 @@ void given_websocket_authorization_changed_mid_session_then_enforced(void)
     // Given: An authenticated WebSocket server
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9042;
-    setup_websocket_auth_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, "testuser", "testpass", port);
+    uint16_t port = setup_websocket_auth_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, "testuser", "testpass");
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -1549,12 +1537,12 @@ esp_err_t ws_xss_protected_handler(httpd_req_t *req)
 /**
  * @brief Setup WebSocket server with XSS protection
  */
-void setup_websocket_xss_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri,
+uint16_t setup_websocket_xss_security_server(httpd_handle_t *handle, httpd_uri_t *ws_uri,
                                          const char *allowed_origin,
-                                         xss_action_mode_t xss_mode, uint16_t port)
+                                         xss_action_mode_t xss_mode)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     ws_xss_security_context_t *ctx = (ws_xss_security_context_t *)malloc(sizeof(ws_xss_security_context_t));
@@ -1579,6 +1567,7 @@ void setup_websocket_xss_security_server(httpd_handle_t *handle, httpd_uri_t *ws
     ws_uri->user_ctx = ctx;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
+    return config.server_port ;
 }
 
 /**
@@ -1600,10 +1589,8 @@ void given_websocket_message_with_xss_payload_then_sanitized_or_blocked(void)
     for (int mode = XSS_MODE_SANITIZE; mode <= XSS_MODE_BLOCK; mode++) {
         httpd_handle_t handle = NULL;
         httpd_uri_t ws_uri;
-        uint16_t port = 9043 + mode; // Different ports for different modes
+        uint16_t port = setup_websocket_xss_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, (xss_action_mode_t)mode);
         const char *mode_name = (mode == XSS_MODE_SANITIZE) ? "sanitize" : "block";
-
-        setup_websocket_xss_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, (xss_action_mode_t)mode, port);
 
         http_test_client_handle_t *client = http_test_client_init();
         TEST_ASSERT_NOT_NULL(client);
@@ -1703,8 +1690,7 @@ void given_websocket_fragment_flooding_attack_then_rate_limited_and_bounded(void
     // Given: A WebSocket server accepting fragmented messages
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9070;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -1799,10 +1785,7 @@ void given_websocket_text_frame_with_malicious_html_then_not_rendered(void)
 {
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9045;
-
-    // Use block mode to ensure no malicious content passes through
-    setup_websocket_xss_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, XSS_MODE_BLOCK, port);
+    uint16_t port = setup_websocket_xss_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, XSS_MODE_BLOCK);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -1899,11 +1882,8 @@ void given_websocket_high_volume_messages_then_rate_limited(void)
     // Given: A WebSocket server accepting messages
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9051;
-
-    // Disable mask key validation to allow predictable test masks
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
+    config.server_port = 0;
     config.ws_validate_mask_key = false;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -1921,7 +1901,7 @@ void given_websocket_high_volume_messages_then_rate_limited(void)
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
 
     // When: Perform successful WebSocket handshake
     char request[1024];
@@ -1932,7 +1912,7 @@ void given_websocket_high_volume_messages_then_rate_limited(void)
              "Connection: Upgrade\r\n"
              "Origin: %s\r\n"
              "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-             "Sec-WebSocket-Version: 13\r\n\r\n", port, ALLOWED_ORIGIN);
+             "Sec-WebSocket-Version: 13\r\n\r\n", config.server_port, ALLOWED_ORIGIN);
 
     http_test_response_t response;
     http_test_client_err_t err = http_test_client_send_raw_request(client, request, strlen(request), &response, TEST_TIMEOUT_MS);
@@ -2029,8 +2009,7 @@ void given_websocket_large_message_flood_then_memory_protected(void)
     // Given: A WebSocket server with frame size limits
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9052;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
@@ -2185,8 +2164,7 @@ void given_websocket_slow_message_delivery_then_timeout_enforced(void)
     // Given: A WebSocket server that should prevent slow message attacks
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    uint16_t port = 9050;
-    setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN, port);
+    uint16_t port = setup_websocket_security_server(&handle, &ws_uri, ALLOWED_ORIGIN);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);

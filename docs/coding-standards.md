@@ -13,7 +13,7 @@ This document defines essential coding standards and best practices for the HTTP
 ### Naming Conventions
 ```c
 // Functions
-esp_err_t httpd_start(httpd_handle_t *handle, const httpd_config_t *config);
+esp_err_t httpd_start(httpd_handle_t *handle, httpd_config_t *config);
 
 // Variables
 httpd_handle_t server_handle;
@@ -52,7 +52,7 @@ extern "C" {
 
 ```c
 // ✅ CORRECT: Zero-initialize structs to prevent uninitialized pointer crashes
-void setup_websocket_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, esp_err_t (*handler)(httpd_req_t *))
+uint16_t setup_websocket_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, esp_err_t (*handler)(httpd_req_t *))
 {
     memset(ws_uri, 0, sizeof(httpd_uri_t));  // Critical: Prevents _strdup on garbage pointers
 

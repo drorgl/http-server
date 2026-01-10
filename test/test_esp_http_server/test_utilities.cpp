@@ -36,7 +36,7 @@ void given_request_with_multiple_headers_when_calling_httpd_req_get_hdr_value_st
 {
     // Given: A running server with a GET handler that reads custom headers
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9012; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -72,6 +72,7 @@ void given_request_with_multiple_headers_when_calling_httpd_req_get_hdr_value_st
     // When: A client connects and sends a request with multiple custom headers
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
+    TEST_PRINTF("Connecting to %d", config.server_port);
     TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
 
     const char *headers_str = "X-Custom-Header-1: Value1\r\nX-Custom-Header-2: Value2\r\n";
@@ -137,7 +138,7 @@ void given_valid_request_with_body_when_calling_httpd_req_recv_then_receives_dat
 {
     // Given: Started HTTP server and a mock request with content
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8097; // Use a different port
+    config.server_port = 0; // Use a different port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -220,7 +221,7 @@ void given_valid_request_when_calling_httpd_send_then_sends_data(void)
 {
     // Given: Started HTTP server and a mock request
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8098; // Use a different port
+    config.server_port = 0; // Use a different port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -324,7 +325,7 @@ void given_server_with_custom_uri_match_fn_when_request_matches_then_handler_inv
 {
     // Given: A running server with a custom uri_match_fn and a registered handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9009; // Use a unique port
+    config.server_port = 0; // Use a unique port
     config.uri_match_fn = custom_uri_match_fn; // Set custom match function
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
@@ -393,7 +394,7 @@ void given_server_with_uri_handler_when_client_connects_then_handler_is_invoked(
 {
     // Given: A running server with a registered handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9001;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

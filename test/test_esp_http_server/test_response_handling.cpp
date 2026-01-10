@@ -286,7 +286,7 @@ void given_valid_request_when_calling_httpd_resp_send_then_response_is_sent(void
     
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8087;
+    config.server_port = 0;
     httpd_handle_t handle = NULL;
     esp_err_t start_ret = httpd_start(&handle, &config);
     TEST_ASSERT_EQUAL(ESP_OK, start_ret);
@@ -314,7 +314,7 @@ void given_server_with_resp_send_handler_when_client_requests_then_receives_resp
 {
     // Given: A running server with a handler that uses httpd_resp_send
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8087; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -362,7 +362,7 @@ void given_server_with_custom_response_handler_when_client_requests_then_receive
 {
     // Given: A running server with a handler that sends a custom response
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9014; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -420,7 +420,7 @@ void given_server_with_chunked_handler_when_client_requests_then_receives_chunke
 {
     // Given: A running server with a handler that sends a chunked response
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9013; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -491,7 +491,7 @@ void given_server_with_large_response_handler_when_client_requests_then_receives
 {
     // Given: A running server with a handler that sends a large response
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9015; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -570,7 +570,7 @@ void given_valid_global_context_when_setting_and_getting_then_context_preserved(
 {
     // Given: Server config with global user context
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8092;
+    config.server_port = 0;
     
     // Create test context
     char test_context[] = "test_global_context";
@@ -601,7 +601,7 @@ void given_valid_session_context_when_setting_and_getting_then_context_preserved
 {
     // Given: Started HTTP server
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 8096; // Use a different port
+    config.server_port = 0; // Use a different port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -657,7 +657,7 @@ void given_server_with_range_middleware_when_client_requests_valid_range_then_20
 {
     // Given: Server with range middleware registered
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9050; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -758,7 +758,7 @@ void given_server_with_range_middleware_when_client_requests_invalid_range_then_
 {
     // Given: Server with range middleware registered (same as above test)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9051; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -853,7 +853,7 @@ void given_server_with_redirect_handler_when_client_gets_then_308_permanent_redi
 {
     // Given: Server with a handler that sends 308 Permanent Redirect
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9052; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -902,7 +902,7 @@ void given_server_with_redirect_handler_when_client_posts_then_308_permanent_red
 {
     // Given: Server with a handler that sends 308 Permanent Redirect
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9053; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -955,7 +955,7 @@ void given_server_with_misdirected_handler_when_client_requests_then_421_misdire
 {
     // Given: Server with a handler that sends 421 Misdirected Request for specific conditions
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9054; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -1013,7 +1013,7 @@ void given_server_with_upgrade_handler_when_client_requests_http1_then_426_upgra
 {
     // Given: Server configured to require HTTP/2 for certain resources
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9055; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

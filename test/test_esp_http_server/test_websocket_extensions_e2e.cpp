@@ -65,7 +65,7 @@ void test_e2e_websocket_extensions_single_negotiation(void)
 
     // Given: Server with WebSocket handler supporting permessage-deflate extension
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9030; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -122,7 +122,7 @@ void test_e2e_websocket_extensions_multiple_negotiation(void)
 
     // Given: Server with WebSocket handler supporting only "compress" extension
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9031; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -179,7 +179,7 @@ void test_e2e_websocket_extensions_no_common_extensions(void)
 
     // Given: Server with WebSocket handler supporting "permessage-deflate" extension
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9032; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -234,7 +234,7 @@ void test_e2e_websocket_extensions_no_extensions_offered(void)
 
     // Given: Server with WebSocket handler that supports extensions
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9033; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

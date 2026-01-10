@@ -44,7 +44,7 @@ void test_e2e_connection_persistence_multiple_requests(void)
 
     // Given: Server with echo handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9020; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -102,7 +102,7 @@ void test_e2e_connection_close_header_enforced(void)
 
     // Given: Server with echo handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9021; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -158,7 +158,7 @@ void test_e2e_connection_http10_default_close(void)
 
     // Given: Server with echo handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9022; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -207,7 +207,7 @@ void test_e2e_connection_http10_explicit_keepalive(void)
 
     // Given: Server with echo handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9023; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -258,7 +258,7 @@ void test_e2e_connection_websocket_upgrade_persistence(void)
 
     // Given: Server with WebSocket handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9024; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -326,7 +326,7 @@ void test_e2e_connection_mixed_version_behavior(void)
 
     // Given: Server with echo handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9025; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -388,7 +388,7 @@ void test_e2e_header_lookup_multiple_headers(void)
 
     // Given: Server with echo handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9030; // Unique port for this test
+    config.server_port = 0; // Unique port for this test
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 

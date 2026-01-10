@@ -93,10 +93,10 @@ static esp_err_t ws_masking_enforcement_handler(httpd_req_t *req)
 /**
  * @brief Setup WebSocket server for masking tests
  */
-void setup_websocket_masking_server(httpd_handle_t *handle, httpd_uri_t *ws_uri)
+uint16_t setup_websocket_masking_server(httpd_handle_t *handle, httpd_uri_t *ws_uri)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9030; // Use port 9030 for masking tests
+    config.server_port = 0; // Use port port for masking tests
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     // Zero-initialize struct to prevent uninitialized pointer fields from causing crashes
@@ -108,6 +108,7 @@ void setup_websocket_masking_server(httpd_handle_t *handle, httpd_uri_t *ws_uri)
     ws_uri->user_ctx = NULL;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
+    return config.server_port;
 }
 
 /**
@@ -130,11 +131,11 @@ void given_unmasked_client_frame_when_received_then_server_closes_with_1002(void
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_masking_server(&handle, &ws_uri);
+    uint16_t port = setup_websocket_masking_server(&handle, &ws_uri);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9030, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     // Perform WebSocket handshake
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -191,11 +192,11 @@ void given_properly_masked_client_frame_when_received_then_accepted_and_unmasked
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_masking_server(&handle, &ws_uri);
+    uint16_t port = setup_websocket_masking_server(&handle, &ws_uri);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9030, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     // Perform WebSocket handshake
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";

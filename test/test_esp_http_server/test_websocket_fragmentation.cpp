@@ -492,10 +492,10 @@ static esp_err_t ws_error_handling_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-void setup_websocket_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, esp_err_t (*handler)(httpd_req_t *))
+uint16_t setup_websocket_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, esp_err_t (*handler)(httpd_req_t *))
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9029;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     // Zero-initialize struct to prevent uninitialized pointer fields causing crashes
@@ -507,6 +507,7 @@ void setup_websocket_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, esp_err
     ws_uri->user_ctx = NULL;
     ws_uri->is_websocket = true;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(*handle, ws_uri));
+    return config.server_port;
 }
 
 void teardown_websocket_server(httpd_handle_t handle)
@@ -522,11 +523,11 @@ void given_ws_connection_when_sending_2_fragment_message_then_reassembled_correc
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -606,11 +607,11 @@ void given_ws_connection_when_sending_3_fragment_message_then_reassembled_correc
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -651,11 +652,11 @@ void given_ws_connection_when_sending_binary_fragment_message_then_reassembled_c
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_binary_fragmentation_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_binary_fragmentation_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -696,11 +697,11 @@ void given_ws_connection_when_sending_large_fragment_message_then_reassembled_co
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -745,11 +746,11 @@ void given_ws_connection_when_sending_invalid_continuation_frame_then_connection
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_error_handling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_error_handling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -793,11 +794,11 @@ void given_ws_connection_when_sending_buffer_overflow_fragment_then_connection_c
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_error_handling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_error_handling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -855,7 +856,7 @@ void given_ws_connection_when_sending_concurrent_fragmentation_then_isolated(voi
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     // Create two clients
     http_test_client_handle_t *client1 = http_test_client_init();
@@ -863,8 +864,8 @@ void given_ws_connection_when_sending_concurrent_fragmentation_then_isolated(voi
     TEST_ASSERT_NOT_NULL(client1);
     TEST_ASSERT_NOT_NULL(client2);
 
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client1, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client2, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client1, "127.0.0.1", port, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client2, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -920,7 +921,7 @@ void given_fragmented_message_when_control_frame_interspersed_then_handled_corre
     // Use custom config to disable mask key validation for this test
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.ws_validate_mask_key = false;
-    config.server_port = 9029;
+    config.server_port = 0;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
     // Register URI handler manually instead of using setup_websocket_server
@@ -933,7 +934,7 @@ void given_fragmented_message_when_control_frame_interspersed_then_handled_corre
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", config.server_port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1017,11 +1018,11 @@ void given_websocket_fragmentation_with_crlf_injection_attempt_then_injection_bl
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1063,11 +1064,11 @@ void given_websocket_malformed_frame_then_connection_closed_with_1002(void)
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1108,11 +1109,11 @@ void given_websocket_invalid_utf8_text_frame_then_connection_closed_with_1002(vo
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1157,11 +1158,11 @@ void given_websocket_invalid_reserved_opcode_then_connection_closed_with_1002(vo
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1205,11 +1206,11 @@ void given_websocket_binary_to_text_handler_then_connection_closed_with_1003(voi
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_text_only_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_text_only_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1254,11 +1255,11 @@ void given_websocket_oversized_message_then_connection_closed_with_1009(void)
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1319,11 +1320,11 @@ void given_websocket_memory_exhaustion_then_connection_closed_with_1011(void)
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_server_error_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_server_error_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];
@@ -1368,11 +1369,11 @@ void given_websocket_extension_required_but_not_supported_then_connection_closed
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_extension_required_handler);
+    uint16_t port = setup_websocket_server(&handle, &ws_uri, ws_extension_required_handler);
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
-    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", 9029, TEST_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, http_test_client_connect(client, "127.0.0.1", port, TEST_TIMEOUT_MS));
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
     char expected_accept_key[33];

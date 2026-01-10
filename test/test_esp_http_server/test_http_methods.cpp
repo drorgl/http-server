@@ -40,7 +40,7 @@ void given_server_with_put_handler_when_client_sends_put_request_then_server_han
 {
     // Given: A running server with a PUT handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9051; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -108,7 +108,7 @@ void given_server_with_delete_handler_when_client_sends_delete_request_then_serv
 {
     // Given: A running server with a DELETE handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9052; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -159,7 +159,7 @@ void given_server_with_head_handler_when_client_sends_head_request_then_server_r
 {
     // Given: A running server with a HEAD handler
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9053; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
@@ -220,7 +220,7 @@ void given_server_with_get_only_handler_when_client_sends_put_delete_head_then_4
 {
     // Given: A running server with only a GET handler for a URI
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 9054; // Use a unique port
+    config.server_port = 0; // Use a unique port
     httpd_handle_t handle = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
 
