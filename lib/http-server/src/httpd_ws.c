@@ -916,6 +916,31 @@ static esp_err_t httpd_ws_unmask_payload(uint8_t *payload, size_t len, const uin
 }
 
 /**
+ * @brief Recovers entire data from socket as per requested length
+ *
+ * This function is a helper loop around httpd_recv_with_opt to strictly ensure that
+ * the requested amount of data is read. This is critical for protocol headers.
+ *
+ * @param req The HTTP request
+ * @param buf Buffer to store data
+ * @param len Length to read
+ * @return ESP_OK on success, ESP_FAIL on error or timeout
+ */
+static esp_err_t httpd_ws_recv_full(httpd_req_t *req, void *buf, size_t len)
+{
+    size_t total_read = 0;
+    while (total_read < len) {
+        int ret = httpd_recv_with_opt(req, (char *)buf + total_read, len - total_read, false);
+        if (ret <= 0) {
+            LOGW(TAG, LOG_FMT("Failed to receive full buffer. Ret: %d, Read: %zu/%zu"), ret, total_read, len);
+            return ESP_FAIL;
+        }
+        total_read += ret;
+    }
+    return ESP_OK;
+}
+
+/**
  * @brief Validate UTF-8 encoding in a byte sequence
  *
  * Validates UTF-8 byte sequence according to RFC 3629.
@@ -1081,9 +1106,8 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         } else if (init_len == 126) {
             /* Case 2: If length byte is 126, then this frame's length bit is 16 bits */
             uint8_t length_bytes[2] = { 0 };
-            recv_ret = httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false);
-            if (recv_ret <= 0) {
-                LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length. Ret: %d"), recv_ret);
+            if (httpd_ws_recv_full(req, length_bytes, sizeof(length_bytes)) != ESP_OK) {
+                LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length"));
                 // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
                 httpd_ws_frame_t close_frame = {
                     .final = true,
@@ -1101,9 +1125,8 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         } else if (init_len == 127) {
             /* Case 3: If length is byte 127, then this frame's length bit is 64 bits */
             uint8_t length_bytes[8] = { 0 };
-            recv_ret = httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false);
-            if (recv_ret <= 0) {
-                LOGW(TAG, LOG_FMT("Failed to receive 8 bytes length. Ret: %d"), recv_ret);
+            if (httpd_ws_recv_full(req, length_bytes, sizeof(length_bytes)) != ESP_OK) {
+                LOGW(TAG, LOG_FMT("Failed to receive 8 bytes length"));
                 // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
                 httpd_ws_frame_t close_frame = {
                     .final = true,
@@ -1129,9 +1152,19 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
 
         /* If this frame is masked, dump the mask as well */
         if (masked) {
-            recv_ret = httpd_recv_with_opt(req, (char *)aux->mask_key, sizeof(aux->mask_key), false);
-            if (recv_ret <= 0) {
-                LOGW(TAG, LOG_FMT("Failed to receive mask key. Ret: %d"), recv_ret);
+            if (httpd_ws_recv_full(req, aux->mask_key, sizeof(aux->mask_key)) != ESP_OK) {
+                LOGW(TAG, LOG_FMT("Failed to receive mask key"));
+                // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
+                httpd_ws_frame_t close_frame = {
+                    .final = true,
+                    .fragmented = false,
+                    .type = HTTPD_WS_TYPE_CLOSE,
+                    .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                    .len = 2
+                };
+                httpd_ws_send_frame(req, &close_frame);
+                /* Give client some time to receive the close frame */
+                httpd_os_thread_sleep(100); // 100ms delay
                 return ESP_FAIL;
             }
         } else {

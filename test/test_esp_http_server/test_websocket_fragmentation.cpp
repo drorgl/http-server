@@ -496,6 +496,8 @@ uint16_t setup_websocket_server(httpd_handle_t *handle, httpd_uri_t *ws_uri, esp
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 0;
+    // Reduce receive timeout to ensure server times out and sends close frame BEFORE client test timeout (2000ms)
+    config.recv_wait_timeout = 1;
     TEST_ASSERT_EQUAL(ESP_OK, httpd_start(handle, &config));
 
     // Zero-initialize struct to prevent uninitialized pointer fields causing crashes
@@ -1085,6 +1087,7 @@ void given_websocket_malformed_frame_then_connection_closed_with_1002(void)
     malformed_frame[0] = 0x81; // FIN=1, opcode=TEXT
     malformed_frame[1] = 0xFE; // 126 for 16-bit length (but only 1 byte provided)
     malformed_frame[2] = 0x00; // First (and only) byte of length - invalid!
+    malformed_frame[3] = 0x00; // Initialize last byte (garbage) to avoid undefined behavior
 
     http_test_client_err_t err = ws_test_client_send_malformed_frame(client, malformed_frame, sizeof(malformed_frame), TEST_TIMEOUT_MS);
     TEST_ASSERT_EQUAL(HTTP_TEST_CLIENT_OK, err);
