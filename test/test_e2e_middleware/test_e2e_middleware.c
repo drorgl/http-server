@@ -941,6 +941,7 @@ void test_e2e_conditional_if_none_match_get(void) {
     char if_none_match_hdr[256];
     int hdr_len = snprintf(if_none_match_hdr, sizeof(if_none_match_hdr), "If-None-Match: %s\r\n", etag);
     TEST_ASSERT_MESSAGE(hdr_len > 0 && hdr_len < (int)sizeof(if_none_match_hdr), "If-None-Match header format failed");
+    free((void*)etag);
 
     http_test_response_t resp2 = {0};
     http_test_client_err_t err2 = http_test_client_send_request(client, HTTP_METHOD_GET, "/test", if_none_match_hdr, NULL, 0, &resp2, 5000);
