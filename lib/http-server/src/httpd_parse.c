@@ -755,6 +755,11 @@ static void httpd_req_cleanup(httpd_req_t *r)
 
     /* Free chunked context if allocated */
     if (ra->chunk_ctx) {
+        /* Free internal trailer buffer allocated in httpd_parse_trailers */
+        if (ra->chunk_ctx->trailer_buffer) {
+            free(ra->chunk_ctx->trailer_buffer);
+            ra->chunk_ctx->trailer_buffer = NULL;
+        }
         free(ra->chunk_ctx);
         ra->chunk_ctx = NULL;
     }
