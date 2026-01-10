@@ -128,6 +128,20 @@ pio test -e native -vvv
 pio test -e native --filter "*test_websocket*"
 ```
 
+#### Filtering Test Output for Failures
+
+To focus on failures when reviewing test results:
+
+```bash
+# Capture complete test output
+pio test -e native -f test_esp_http_server -vvv > test_output.txt
+
+# Extract only failure details
+python scripts/extract_fails.py test_output.txt failures_only.txt
+```
+
+This separates failed tests and their preceding context from the full output for easier debugging.
+
 #### CI/CD Integration
 
 The project includes a GitHub Actions workflow (`.github/workflows/platformio-test.yml`) that:
@@ -264,6 +278,11 @@ The project includes specialized Python scripts for automated testing:
 - **Features**: Environment variable extraction, JSON output
 - **Usage**: Automatic integration with build process
 
+#### `scripts/extract_fails.py`
+- **Purpose**: Filter raw test output to extract only failed test logs and their context
+- **Features**: Command-line utility, utf-16 encoding support, argparse help
+- **Usage**: `python scripts/extract_fails.py INPUT_FILE OUTPUT_FILE`
+
 ### Environment Variables
 
 Key environment variables for development:
@@ -303,7 +322,8 @@ http-server/
 │   ├── gcovr_runner.py     # Coverage analysis
 │   ├── sanitizer_runner.py # Memory sanitization
 │   ├── valgrind_runner.py  # Valgrind integration
-│   └── dump_environment.py # Environment analysis
+│   ├── dump_environment.py # Environment analysis
+│   └── extract_fails.py    # Failure extraction
 ├── src/                    # Source code
 ├── test/                   # Test suite
 │   └── test_esp_http_server/ # HTTP server tests
