@@ -724,6 +724,7 @@ static void init_req(httpd_req_t *r, httpd_config_t *config)
     r->content_len = 0;
     r->aux = 0;
     r->user_ctx = 0;
+    r->free_user_ctx = 0;
     r->sess_ctx = 0;
     r->free_ctx = 0;
     r->ignore_sess_ctx_changes = 0;
@@ -756,6 +757,13 @@ static void httpd_req_cleanup(httpd_req_t *r)
     if (ra->chunk_ctx) {
         free(ra->chunk_ctx);
         ra->chunk_ctx = NULL;
+    }
+
+    /* Free user context if allocated and cleanup function is provided */
+    if (r->user_ctx && r->free_user_ctx) {
+        r->free_user_ctx(r->user_ctx);
+        r->user_ctx = NULL;
+        r->free_user_ctx = NULL;
     }
 
     /* Check if the context has changed and needs to be cleared */

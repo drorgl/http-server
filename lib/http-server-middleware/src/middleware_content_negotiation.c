@@ -654,9 +654,9 @@ esp_err_t middleware_content_negotiation(httpd_req_t *req,
     if (result) {
         // Always set the cleanup function when we have allocated memory
         // This ensures proper cleanup in both test and production environments
-        req->free_ctx = (void*)&httpd_free_negotiation_result;
+        req->free_user_ctx = (void*)&httpd_free_negotiation_result;
     } else {
-        req->free_ctx = NULL;
+        req->free_user_ctx = NULL;
     }
     
     LOGD("content_negotiation", "middleware: after setting, user_ctx=%p, free_ctx=%p", 

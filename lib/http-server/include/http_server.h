@@ -440,6 +440,11 @@ typedef struct httpd_req {
     void *user_ctx;
 
     /**
+     * Free function for user context
+     */
+    httpd_free_ctx_fn_t free_user_ctx;
+
+    /**
      * GUARD RAIL: Flag indicating if response has been sent
      * Prevents double response sending which causes HTTP stream corruption
      * Added in response to Range middleware double-send bug
