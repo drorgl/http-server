@@ -65,7 +65,7 @@ static esp_err_t echo_handler(httpd_req_t *req) {
 /**
  * @brief Start test server with content negotiation middleware
  */
-static httpd_handle_t start_test_server_with_negotiation(uint16_t *port_out) {
+static httpd_uri_t* start_test_server_with_negotiation(httpd_handle_t *server_out, uint16_t *port_out) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 0;  // Use dynamic port
     // config.ctrl_port = 0;
@@ -103,15 +103,18 @@ static httpd_handle_t start_test_server_with_negotiation(uint16_t *port_out) {
         httpd_config_t config;
     } *hd_proxy = (void *)server;
     *port_out = hd_proxy->config.server_port;
+    *server_out = server;
 
-    return server;
+    return wrapped_uri;
 }
 
 /**
  * @brief Stop test server and cleanup
  */
-static void stop_test_server(httpd_handle_t server) {
+static void stop_test_server(httpd_handle_t server, httpd_uri_t *wrapped_uri) {
     httpd_unregister_uri_handler(server, "/test", HTTP_GET);
+    httpd_free_wrapped_ctx(wrapped_uri->user_ctx);
+    free(wrapped_uri);
     httpd_stop(server);
 }
 
@@ -120,10 +123,12 @@ static void stop_test_server(httpd_handle_t server) {
  */
 void test_e2e_cn_middleware_initialization(void) {
     httpd_handle_t server;
+    httpd_uri_t *wrapped_uri;
     uint16_t port;
 
     // Start server with content negotiation middleware
-    server = start_test_server_with_negotiation(&port);
+    wrapped_uri = start_test_server_with_negotiation(&server, &port);
+    TEST_ASSERT_NOT_NULL(wrapped_uri);
     TEST_ASSERT_NOT_NULL(server);
     TEST_ASSERT_TRUE(port > 0);
 
@@ -166,7 +171,7 @@ void test_e2e_cn_middleware_initialization(void) {
     http_test_client_disconnect(client);
 
     // Cleanup
-    stop_test_server(server);
+    stop_test_server(server, wrapped_uri);
 }
 
 /**
@@ -174,10 +179,12 @@ void test_e2e_cn_middleware_initialization(void) {
  */
 void test_e2e_content_negotiation_malformed_headers(void) {
     httpd_handle_t server;
+    httpd_uri_t *wrapped_uri;
     uint16_t port;
 
     // Start server with content negotiation middleware
-    server = start_test_server_with_negotiation(&port);
+    wrapped_uri = start_test_server_with_negotiation(&server, &port);
+    TEST_ASSERT_NOT_NULL(wrapped_uri);
     TEST_ASSERT_NOT_NULL(server);
 
     // Connect client
@@ -206,7 +213,7 @@ void test_e2e_content_negotiation_malformed_headers(void) {
     }
 
     http_test_client_disconnect(client);
-    stop_test_server(server);
+    stop_test_server(server, wrapped_uri);
 }
 
 /**
@@ -214,10 +221,12 @@ void test_e2e_content_negotiation_malformed_headers(void) {
  */
 void test_e2e_content_negotiation_server_config(void) {
     httpd_handle_t server;
+    httpd_uri_t *wrapped_uri;
     uint16_t port;
 
     // Start server with content negotiation middleware
-    server = start_test_server_with_negotiation(&port);
+    wrapped_uri = start_test_server_with_negotiation(&server, &port);
+    TEST_ASSERT_NOT_NULL(wrapped_uri);
     TEST_ASSERT_NOT_NULL(server);
 
     // Connect client and make multiple requests to ensure stability
@@ -238,7 +247,7 @@ void test_e2e_content_negotiation_server_config(void) {
     }
 
     http_test_client_disconnect(client);
-    stop_test_server(server);
+    stop_test_server(server, wrapped_uri);
 }
 
 

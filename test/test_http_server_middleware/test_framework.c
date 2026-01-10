@@ -117,6 +117,7 @@ void test_middleware_basic_wrapper(void) {
     TEST_ASSERT_EQUAL(1, middleware_call_count);
 
     // Cleanup
+    httpd_free_wrapped_ctx(wrapped_uri->user_ctx);
     free(wrapped_uri);
 }
 
@@ -182,6 +183,7 @@ void test_middleware_execution_order(void) {
     TEST_ASSERT_EQUAL_STRING("first second third original ", middleware_log);
 
     // Cleanup
+    httpd_free_wrapped_ctx(wrapped_uri->user_ctx);
     free(wrapped_uri);
 }
 
@@ -248,6 +250,7 @@ void test_short_circuit_behavior(void) {
     TEST_ASSERT_EQUAL(2, middleware_call_count); // First + second middleware
 
     // Cleanup
+    httpd_free_wrapped_ctx(wrapped_uri->user_ctx);
     free(wrapped_uri);
 }
 
@@ -304,6 +307,7 @@ void test_middleware_disabled(void) {
     TEST_ASSERT_EQUAL(1, middleware_call_count);
 
     // Cleanup
+    httpd_free_wrapped_ctx(wrapped_uri->user_ctx);
     free(wrapped_uri);
 }
 
@@ -371,6 +375,7 @@ void test_middleware_uri_pattern_filtering(void) {
     TEST_ASSERT_EQUAL_STRING("wildcard_match exact_match original ", middleware_log);
 
     // Cleanup
+    httpd_free_wrapped_ctx(wrapped_uri->user_ctx);
     free(wrapped_uri);
 }
 

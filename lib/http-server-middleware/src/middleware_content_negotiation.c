@@ -341,11 +341,8 @@ void httpd_free_negotiation_result(httpd_content_negotiation_result_t *result) {
         free(result->vary_header_value);
         result->vary_header_value = NULL;
     }
-    
-    // Note: Do NOT free the result structure itself here
-    // The caller is responsible for freeing the result structure
-    // if it was dynamically allocated. If it's stack-allocated (like in tests),
-    // it will be automatically freed when it goes out of scope.
+
+    // The result structure itself is freed by the caller/user_ctx cleanup function
 }
 
 /**
@@ -534,6 +531,19 @@ esp_err_t httpd_negotiate_media_type(const char *accept_header,
 }
 
 /**
+ * @brief Free function for negotiation result when used as user_ctx
+ *
+ * Frees the strings inside result, then frees the result struct itself
+ */
+static void free_negotiation_result(void *user_ctx) {
+    if (user_ctx) {
+        httpd_content_negotiation_result_t *result = (httpd_content_negotiation_result_t *)user_ctx;
+        httpd_free_negotiation_result(result);
+        free(result);
+    }
+}
+
+/**
  * @brief Content negotiation middleware
  *
  * Parses request Accept headers and performs content negotiation,
@@ -654,7 +664,7 @@ esp_err_t middleware_content_negotiation(httpd_req_t *req,
     if (result) {
         // Always set the cleanup function when we have allocated memory
         // This ensures proper cleanup in both test and production environments
-        req->free_user_ctx = (void*)&httpd_free_negotiation_result;
+        req->free_user_ctx = free_negotiation_result;
     } else {
         req->free_user_ctx = NULL;
     }
