@@ -10,6 +10,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <assert.h>
 
 #include "middleware_websocket_xss.h"
 #include <log.h>  // For LOGE, LOGW macros
@@ -48,17 +49,20 @@ esp_err_t middleware_websocket_xss(httpd_req_t *req,
             // Close WebSocket connection with proper close code
             // Send close frame manually as RFC 6455 close handling
             const char *reason = "Unsupported Data";
-            uint8_t close_payload[17] = {0};  // Status code (2 bytes) + reason (15 bytes)
+            LOGD("XSS_MIDDLEWARE", "BLOCK: reason='%s', strlen(reason)=%zu", reason, strlen(reason));
+            uint8_t close_payload[19] = {0};  // Status code (2 bytes) + reason (15 bytes) + buffer zone (2 bytes)
             close_payload[0] = (1003 >> 8) & 0xFF;  // Status code in network byte order (big-endian)
             close_payload[1] = 1003 & 0xFF;
-            memcpy(&close_payload[2], reason, strlen(reason));
+            size_t reason_len = (strlen(reason) < 15) ? strlen(reason) : 15;
+            memcpy(&close_payload[2], reason, reason_len);
             httpd_ws_frame_t close_frame = {
                 .final = true,
                 .fragmented = false,
                 .type = HTTPD_WS_TYPE_CLOSE,
                 .payload = close_payload,
-                .len = 2 + strlen(reason)
+                .len = 2 + reason_len
             };
+            assert(close_frame.len <= sizeof(close_payload));
             esp_err_t close_ret = httpd_ws_send_frame(req, &close_frame);
             if (close_ret != ESP_OK && config->enable_logging && config->log_level >= LOG_ERROR) {
                 LOGE("XSS_MIDDLEWARE", "Failed to send close frame: %d", close_ret);
@@ -93,17 +97,20 @@ esp_err_t middleware_websocket_xss(httpd_req_t *req,
                 }
                 // Fallback to blocking if sanitization fails
                 const char *reason = "Unsupported Data";
-                uint8_t close_payload[17] = {0};  // Status code (2 bytes) + reason (15 bytes)
+                LOGD("XSS_MIDDLEWARE", "SANITIZE_FALLBACK: reason='%s', strlen(reason)=%zu", reason, strlen(reason));
+                uint8_t close_payload[19] = {0};  // Status code (2 bytes) + reason (15 bytes) + buffer zone (2 bytes)
                 close_payload[0] = (1003 >> 8) & 0xFF;  // Status code in network byte order (big-endian)
                 close_payload[1] = 1003 & 0xFF;
-                memcpy(&close_payload[2], reason, strlen(reason));
+                size_t reason_len = (strlen(reason) < 15) ? strlen(reason) : 15;
+                memcpy(&close_payload[2], reason, reason_len);
                 httpd_ws_frame_t close_frame = {
                     .final = true,
                     .fragmented = false,
                     .type = HTTPD_WS_TYPE_CLOSE,
                     .payload = close_payload,
-                    .len = 2 + strlen(reason)
+                    .len = 2 + reason_len
                 };
+                assert(close_frame.len <= sizeof(close_payload));
                 httpd_ws_send_frame(req, &close_frame);
                 return ESP_FAIL;
             }
