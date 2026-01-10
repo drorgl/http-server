@@ -1084,6 +1084,17 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             recv_ret = httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false);
             if (recv_ret <= 0) {
                 LOGW(TAG, LOG_FMT("Failed to receive 2 bytes length. Ret: %d"), recv_ret);
+                // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
+                httpd_ws_frame_t close_frame = {
+                    .final = true,
+                    .fragmented = false,
+                    .type = HTTPD_WS_TYPE_CLOSE,
+                    .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                    .len = 2
+                };
+                httpd_ws_send_frame(req, &close_frame);
+                /* Give client some time to receive the close frame */
+                httpd_os_thread_sleep(100); // 100ms delay
                 return ESP_FAIL;
             }
             current_frame_fragment_len = ((uint32_t)(length_bytes[0] << 8U) | (length_bytes[1]));
@@ -1093,6 +1104,17 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             recv_ret = httpd_recv_with_opt(req, (char *)length_bytes, sizeof(length_bytes), false);
             if (recv_ret <= 0) {
                 LOGW(TAG, LOG_FMT("Failed to receive 8 bytes length. Ret: %d"), recv_ret);
+                // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
+                httpd_ws_frame_t close_frame = {
+                    .final = true,
+                    .fragmented = false,
+                    .type = HTTPD_WS_TYPE_CLOSE,
+                    .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                    .len = 2
+                };
+                httpd_ws_send_frame(req, &close_frame);
+                /* Give client some time to receive the close frame */
+                httpd_os_thread_sleep(100); // 100ms delay
                 return ESP_FAIL;
             }
             current_frame_fragment_len = (((uint64_t)length_bytes[0] << 56U) |
@@ -1210,6 +1232,25 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             httpd_ws_send_frame(req, &close_frame);
             LOGW(TAG, LOG_FMT("Fragment too large: %"NEWLIB_NANO_COMPAT_FORMAT" bytes, max allowed: %"NEWLIB_NANO_COMPAT_FORMAT),
                  NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len), NEWLIB_NANO_COMPAT_CAST(frag_ctx->buffer_size));
+
+            /* Drain the socket to prevent RST when closing */
+            if (current_frame_fragment_len > 0) {
+                size_t bytes_to_discard = current_frame_fragment_len;
+                /* Put a cap on how much we drain to prevent DoS (slow clients) */
+                if (bytes_to_discard > 10 * 1024) {
+                     bytes_to_discard = 10 * 1024;
+                }
+                uint8_t discard_buf[128];
+                while (bytes_to_discard > 0) {
+                     size_t to_read = (bytes_to_discard > sizeof(discard_buf)) ? sizeof(discard_buf) : bytes_to_discard;
+                     int ret = httpd_recv_with_opt(req, (char *)discard_buf, to_read, false);
+                     if (ret <= 0) {
+                         break;
+                     }
+                     bytes_to_discard -= ret;
+                }
+            }
+
             ws_frg_ctx->in_fragmentation = false;
             ws_frg_ctx->reassembled_len = 0;
             return ESP_ERR_INVALID_SIZE;
@@ -1230,6 +1271,25 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
                  NEWLIB_NANO_COMPAT_CAST(ws_frg_ctx->reassembled_len),
                  NEWLIB_NANO_COMPAT_CAST(current_frame_fragment_len),
                  NEWLIB_NANO_COMPAT_CAST(frag_ctx->buffer_size));
+
+            /* Drain the socket to prevent RST when closing */
+            if (current_frame_fragment_len > 0) {
+                size_t bytes_to_discard = current_frame_fragment_len;
+                /* Put a cap on how much we drain to prevent DoS (slow clients) */
+                if (bytes_to_discard > 10 * 1024) {
+                     bytes_to_discard = 10 * 1024;
+                }
+                uint8_t discard_buf[128];
+                while (bytes_to_discard > 0) {
+                     size_t to_read = (bytes_to_discard > sizeof(discard_buf)) ? sizeof(discard_buf) : bytes_to_discard;
+                     int ret = httpd_recv_with_opt(req, (char *)discard_buf, to_read, false);
+                     if (ret <= 0) {
+                         break;
+                     }
+                     bytes_to_discard -= ret;
+                }
+            }
+
             ws_frg_ctx->in_fragmentation = false; // Reset state
             ws_frg_ctx->reassembled_len = 0;
             return ESP_ERR_INVALID_SIZE; // Or appropriate error for buffer overflow
