@@ -116,7 +116,8 @@ initializer that should be kept in sync
             .max_idle_sec = 10,                         \
             .max_lifetime_sec = 0                       \
         },                                              \
-        .ws_max_fragment_size = 4096                    \
+        .ws_max_fragment_size = 4096,                   \
+        .ws_validate_mask_key = true                    \
 }
 
 #define ESP_ERR_HTTPD_BASE              (0xb000)                    /*!< Starting number of HTTPD error codes */
@@ -330,6 +331,11 @@ typedef struct httpd_config {
      * WebSocket maximum fragment size
      */
     uint32_t ws_max_fragment_size;  /*!< Maximum WebSocket fragment size in bytes for reassembly buffer */
+
+    /**
+     * WebSocket security configuration
+     */
+    bool ws_validate_mask_key;  /*!< Whether to validate WebSocket mask keys are non-zero (security feature, default true) */
 } httpd_config_t;
 
 /**

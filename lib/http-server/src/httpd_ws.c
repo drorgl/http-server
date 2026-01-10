@@ -1127,6 +1127,24 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
             httpd_ws_send_frame(req, &close_frame);
             return ESP_ERR_INVALID_STATE;
         }
+
+        /* Validate mask key is not all zeros if configured (predictable mask is security risk)
+         * RFC 6455 Section 5.3: Masking keys should be unpredictable */
+        if (((struct httpd_data *)req->handle)->config.ws_validate_mask_key &&
+            aux->mask_key[0] == 0 && aux->mask_key[1] == 0 &&
+            aux->mask_key[2] == 0 && aux->mask_key[3] == 0) {
+            LOGW(TAG, LOG_FMT("WS frame has all-zero mask key (predictable mask)."));
+            // RFC 6455 Section 7.4.1: Send Close frame with protocol error (1002) before closing
+            httpd_ws_frame_t close_frame = {
+                .final = true,
+                .fragmented = false,
+                .type = HTTPD_WS_TYPE_CLOSE,
+                .payload = (uint8_t[]){0x03, 0xEA}, // Status code 1002 in network byte order
+                .len = 2
+            };
+            httpd_ws_send_frame(req, &close_frame);
+            return ESP_ERR_INVALID_STATE;
+        }
     }
 
     /* Populate frame structure with parsed header information */
@@ -1137,48 +1155,45 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
 
     /* Handle fragmentation */
     if (ws_frg_ctx && ws_frg_ctx->in_fragmentation) {
-        /* Handle control frames during fragmentation separately - they don't participate in reassembly */
-        if (current_frame_type >= 8) { // Control frames
-            LOGD(TAG, "Control frame %d received during fragmentation, handling separately", current_frame_type);
-
-            /* We only accept the incoming packet length that is smaller than the max_len */
-            if (current_frame_fragment_len > max_len) {
-                if (max_len != 0) {
-                    LOGW(TAG, LOG_FMT("Control frame too long during fragmentation"));
-                    return ESP_ERR_INVALID_SIZE;
-                }
-            }
-
-            if (current_frame_fragment_len == 0) {
-                frame->len = 0;
-                return ESP_OK;
-            }
-
+        // Control frames (0x8-0xF) are handled independently and do not affect fragmentation reassembly
+        if (current_frame_type >= HTTPD_WS_TYPE_CLOSE) { // Control frame
             if (frame->payload == NULL) {
-                LOGW(TAG, LOG_FMT("Payload buffer is null for control frame"));
-                return ESP_FAIL;
+                frame->payload = (uint8_t *)malloc(current_frame_fragment_len + 1);
+                if (!frame->payload) {
+                    LOGE(TAG, LOG_FMT("Failed to allocate payload buffer for WebSocket control frame"));
+                    return ESP_ERR_NO_MEM;
+                }
+                frame->api_allocated_payload = true;
             }
 
-            size_t left_len = current_frame_fragment_len;
-            size_t offset = 0;
-
-            while (left_len > 0) {
-                int read_len = httpd_recv_with_opt(req, (char *)frame->payload + offset, left_len, false);
-                if (read_len <= 0) {
-                    LOGW(TAG, LOG_FMT("Failed to receive control frame payload during fragmentation"));
+            // Receive control frame payload
+            size_t left_len_ctrl = current_frame_fragment_len;
+            size_t offset_ctrl = 0;
+            while (left_len_ctrl > 0) {
+                int read_ctrl = httpd_recv_with_opt(req, (char *)frame->payload + offset_ctrl,
+                                                    left_len_ctrl, false);
+                if (read_ctrl <= 0) {
+                    LOGW(TAG, LOG_FMT("Failed to receive control frame payload. Ret: %d"), read_ctrl);
                     return ESP_FAIL;
                 }
-                offset += read_len;
-                left_len -= read_len;
+                offset_ctrl += read_ctrl;
+                left_len_ctrl -= read_ctrl;
             }
 
+            /* Unmask control frame payload */
             httpd_ws_unmask_payload(frame->payload, current_frame_fragment_len, aux->mask_key);
 
+            // Set frame fields for control frame
+            frame->len = current_frame_fragment_len;
             frame->type = current_frame_type;
             frame->final = current_frame_final;
+            frame->fragmented = false; // Control frames are not fragmented
 
-            LOGD_BUFFER_HEXDUMP(TAG, frame->payload, current_frame_fragment_len, "Server received control frame during fragmentation: type=%d, final=%d, len=%zu", current_frame_type, current_frame_final, current_frame_fragment_len);
+            LOGD_BUFFER_HEXDUMP(TAG, frame->payload, current_frame_fragment_len,
+                               "Server received control frame during fragmentation: type=%d, final=%d, len=%zu",
+                               current_frame_type, current_frame_final, current_frame_fragment_len);
 
+            // Do not affect fragmentation state - control frames are independent
             return ESP_OK;
         }
 
@@ -1223,7 +1238,7 @@ esp_err_t httpd_ws_recv_frame(httpd_req_t *req, httpd_ws_frame_t *frame, size_t 
         // Receive payload directly into the reassembly buffer
         size_t left_len = current_frame_fragment_len;
         size_t offset = 0;
-        
+
         while (left_len > 0) {
             int read_len_frag = httpd_recv_with_opt(req, (char *)ws_frg_ctx->reassembled_buffer + ws_frg_ctx->reassembled_len + offset, left_len, false);
             if (read_len_frag <= 0) {

@@ -61,6 +61,12 @@ static esp_err_t ws_send_protocol_error_close(httpd_req_t *req)
 
 static esp_err_t ws_fragmentation_reassembling_handler(httpd_req_t *req)
 {
+    // Enable control frame handling in user handler for this test
+    struct httpd_req_aux *req_aux = (struct httpd_req_aux *)req->aux;
+    if (req_aux && req_aux->sd) {
+        req_aux->sd->ws_control_frames = true;
+    }
+
     // Handle both handshake (HTTP_GET) and WebSocket frames
     if (req->method == HTTP_GET) {
         event_group_set_bits(ws_event_group, WS_CONNECTED_BIT);
@@ -79,6 +85,21 @@ static esp_err_t ws_fragmentation_reassembling_handler(httpd_req_t *req)
     // For intermediate fragments, it will return ESP_ERR_HTTPD_WS_PENDING_FRAGMENT.
     esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0); // max_len = 0 means get header + length first
     LOGD(TAG, "ws_fragmentation_reassembling_handler: httpd_ws_recv_frame returned %d", ret);
+
+    if (ret == ESP_OK && ws_pkt.type == HTTPD_WS_TYPE_PING) {
+        httpd_ws_frame_t pong = {
+            .final = true,
+            .fragmented = false,
+            .type = HTTPD_WS_TYPE_PONG,
+            .payload = ws_pkt.payload,
+            .len = ws_pkt.len
+        };
+        esp_err_t pong_ret = httpd_ws_send_frame(req, &pong);
+        if (ws_pkt.api_allocated_payload) {
+            free(ws_pkt.payload);
+        }
+        return pong_ret == ESP_OK ? ESP_OK : pong_ret;
+    }
 
     if (ret == ESP_ERR_HTTPD_WS_PENDING_FRAGMENT) {
         // More fragments are expected, or server is still reassembling.
@@ -895,7 +916,20 @@ void given_fragmented_message_when_control_frame_interspersed_then_handled_corre
 
     httpd_handle_t handle = NULL;
     httpd_uri_t ws_uri;
-    setup_websocket_server(&handle, &ws_uri, ws_fragmentation_reassembling_handler);
+
+    // Use custom config to disable mask key validation for this test
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.ws_validate_mask_key = false;
+    config.server_port = 9029;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_start(&handle, &config));
+
+    // Register URI handler manually instead of using setup_websocket_server
+    ws_uri.uri = "/ws_fragmentation";
+    ws_uri.method = HTTP_GET;
+    ws_uri.handler = ws_fragmentation_reassembling_handler;
+    ws_uri.user_ctx = NULL;
+    ws_uri.is_websocket = true;
+    TEST_ASSERT_EQUAL(ESP_OK, httpd_register_uri_handler(handle, &ws_uri));
 
     http_test_client_handle_t *client = http_test_client_init();
     TEST_ASSERT_NOT_NULL(client);
