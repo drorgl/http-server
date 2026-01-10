@@ -22,7 +22,25 @@
 static xss_detection_stats_t g_xss_stats = {0};
 
 /**
- * @brief Case-insensitive string search
+ * @brief Case-insensitive string search with length bounds (binary-safe)
+ */
+static const char* strnistr(const char *haystack, size_t haystack_len, const char *needle) {
+    if (!haystack || !needle || haystack_len == 0) return NULL;
+
+    size_t needle_len = strlen(needle);
+    if (needle_len == 0) return NULL;
+    if (needle_len > haystack_len) return NULL;
+
+    for (size_t i = 0; i <= haystack_len - needle_len; ++i) {
+        if (strncasecmp(haystack + i, needle, needle_len) == 0) {
+            return haystack + i;
+        }
+    }
+    return NULL;
+}
+
+/**
+ * @brief Legacy case-insensitive string search (assumes null-termination)
  */
 static const char* stristr(const char *haystack, const char *needle) {
     if (!haystack || !needle) return NULL;
@@ -46,7 +64,7 @@ static bool detect_script_tags(const char *payload, size_t len) {
     };
 
     for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); ++i) {
-        if (stristr(payload, patterns[i]) != NULL) {
+        if (strnistr(payload, len, patterns[i]) != NULL) {
             return true;
         }
     }
@@ -62,13 +80,13 @@ static bool detect_javascript_urls(const char *payload, size_t len) {
     };
 
     for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); ++i) {
-        if (stristr(payload, patterns[i]) != NULL) {
+        if (strnistr(payload, len, patterns[i]) != NULL) {
             return true;
         }
     }
 
     // Also check for URL-encoded variants
-    if (strstr(payload, "%6A%61%76%61%73%63%72%69%70%74%3A") != NULL) { // javascript:
+    if (strnistr(payload, len, "%6A%61%76%61%73%63%72%69%70%74%3A") != NULL) { // javascript:
         return true;
     }
 
@@ -88,7 +106,7 @@ static bool detect_event_handlers(const char *payload, size_t len) {
     };
 
     for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); ++i) {
-        if (stristr(payload, patterns[i]) != NULL) {
+        if (strnistr(payload, len, patterns[i]) != NULL) {
             return true;
         }
     }
@@ -99,7 +117,7 @@ static bool detect_event_handlers(const char *payload, size_t len) {
  * @brief Check for inline styles with dangerous URLs
  */
 static bool detect_inline_styles(const char *payload, size_t len) {
-    const char *style_pos = stristr(payload, "style=");
+    const char *style_pos = strnistr(payload, len, "style=");
     if (!style_pos) return false;
 
     // Look for javascript: or similar within the style attribute
@@ -111,9 +129,9 @@ static bool detect_inline_styles(const char *payload, size_t len) {
     const char *search_end = end_quote ? end_quote : payload + len;
     const char *substr = style_pos;
 
-    while ((substr = strstr(substr, "url(")) != NULL && substr < search_end) {
+    while ((substr = strnistr(substr, len - (substr - payload), "url(")) != NULL && substr < search_end) {
         // Check if url( contains javascript:
-        const char *js_url = stristr(substr, "javascript:");
+        const char *js_url = strnistr(substr, len - (substr - payload), "javascript:");
         if (js_url && js_url < search_end) {
             return true;
         }
@@ -134,7 +152,7 @@ static bool detect_html_entities(const char *payload, size_t len) {
     };
 
     for (size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); ++i) {
-        if (stristr(payload, patterns[i]) != NULL) {
+        if (strnistr(payload, len, patterns[i]) != NULL) {
             return true;
         }
     }

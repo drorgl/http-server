@@ -397,8 +397,8 @@ static void log_buffer_hex_internal(const char *tag, const void *buffer, uint16_
         {
             bytes_cur_line = buff_len;
         }
-        //use memcpy to get around alignment issue
-        memcpy(temp_buffer, buffer_ptr, (bytes_cur_line + 3) / 4 * 4);
+        //use memcpy to get around alignment issue (copy exact amount needed)
+        memcpy(temp_buffer, buffer_ptr, bytes_cur_line);
         ptr_line = temp_buffer;
 
         for (int i = 0; i < bytes_cur_line; i++)
@@ -437,8 +437,8 @@ static void log_buffer_char_internal(const char *tag, const void *buffer, uint16
         {
             bytes_cur_line = buff_len;
         }
-        //use memcpy to get around alignment issue
-        memcpy(temp_buffer, buffer_ptr, (bytes_cur_line + 3) / 4 * 4);
+        //use memcpy to get around alignment issue (copy exact amount needed)
+        memcpy(temp_buffer, buffer_ptr, bytes_cur_line);
         ptr_line = temp_buffer;
 
         for (int i = 0; i < bytes_cur_line; i++)
@@ -483,8 +483,8 @@ static void log_buffer_hexdump_internal(const char *tag, const void *buffer,
         {
             bytes_cur_line = buff_len;
         }
-        //use memcpy to get around alignment issue
-        memcpy(temp_buffer, buffer_ptr, (bytes_cur_line + 3) / 4 * 4);
+        //use memcpy to get around alignment issue (copy exact amount needed)
+        memcpy(temp_buffer, buffer_ptr, bytes_cur_line);
         ptr_line = temp_buffer;
         ptr_hd = hd_buffer;
 
