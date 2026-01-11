@@ -153,6 +153,7 @@ void given_protected_resource_when_no_auth_header_then_401_unauthorized_returned
     TEST_ASSERT_NOT_NULL(www_auth_header);
     TEST_ASSERT_EQUAL_STRING("Basic realm=\"Protected Area\"", www_auth_header);
 
+    free((char*)www_auth_header);
     http_test_client_free_response(&response);
     http_test_client_disconnect(client);
     httpd_stop(handle);
@@ -276,6 +277,7 @@ void given_basic_auth_credentials_when_invalid_then_access_denied(void)
     TEST_ASSERT_NOT_NULL(www_auth_header);
     TEST_ASSERT_EQUAL_STRING("Basic realm=\"Test Realm\"", www_auth_header);
 
+    free((char*)www_auth_header);
     http_test_client_free_response(&response);
     http_test_client_disconnect(client);
     httpd_stop(handle);
@@ -339,6 +341,7 @@ void given_authentication_info_when_successful_then_header_included(void)
     TEST_ASSERT_NOT_NULL(auth_info_header);
     TEST_ASSERT_EQUAL_STRING("nextnonce=\"abc123\"", auth_info_header);
 
+    free((char*)auth_info_header);
     http_test_client_free_response(&response);
     http_test_client_disconnect(client);
     httpd_stop(handle);
@@ -404,6 +407,7 @@ void given_multiple_auth_schemes_when_offered_then_client_can_choose(void)
     // For this test, we just verify that at least one WWW-Authenticate header exists
     // The actual multi-header functionality depends on how httpd_resp_set_hdr works
 
+    free((char*)basic_auth_header);
     http_test_client_free_response(&response);
     http_test_client_disconnect(client);
     httpd_stop(handle);

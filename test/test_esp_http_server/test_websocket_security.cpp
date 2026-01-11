@@ -778,6 +778,7 @@ void given_websocket_upgrade_without_authentication_then_connection_failed(void)
     TEST_ASSERT_NOT_NULL(www_auth_header);
     TEST_ASSERT_EQUAL_STRING("Basic realm=\"WebSocket Secure Access\"", www_auth_header);
 
+    free((char*)www_auth_header);
     http_test_client_free_response(&response);
     http_test_client_disconnect(client);
     // Need to handle ws_auth_context_t cleanup differently
