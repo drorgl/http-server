@@ -427,6 +427,12 @@ static esp_err_t ws_text_only_handler(httpd_req_t *req)
             .len = 2
         };
         httpd_ws_send_frame(req, &close_frame);
+
+        // Free API-allocated payload on error path to prevent memory leak
+        if (ws_pkt.api_allocated_payload) {
+            free(ws_pkt.payload);
+        }
+
         return ESP_FAIL;
     }
 
