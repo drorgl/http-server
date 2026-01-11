@@ -136,6 +136,9 @@ static esp_err_t ws_fragmentation_reassembling_handler(httpd_req_t *req)
 
         // If validation failed, send protocol error close frame
         if (validation_ret != ESP_OK) {
+            if (ws_pkt.api_allocated_payload) {
+                free(ws_pkt.payload);
+            }
             ws_send_protocol_error_close(req);
             return ESP_FAIL;
         }
@@ -144,6 +147,9 @@ static esp_err_t ws_fragmentation_reassembling_handler(httpd_req_t *req)
         if (memchr(ws_pkt.payload, '\r', ws_pkt.len) != NULL &&
             memchr(ws_pkt.payload, '\n', ws_pkt.len) != NULL) {
             LOGD(TAG, "CRLF injection detected in reassembled message, closing connection");
+            if (ws_pkt.api_allocated_payload) {
+                free(ws_pkt.payload);
+            }
             httpd_ws_frame_t close_frame = {
                 .final = true,
                 .fragmented = false,
@@ -194,6 +200,12 @@ static esp_err_t ws_fragmentation_reassembling_handler(httpd_req_t *req)
         return send_ret != ESP_OK ? send_ret : ESP_OK;
     }
     // If ws_pkt.len is 0 and ret is ESP_OK, it means an empty frame was received. No further action needed.
+
+    // Free API allocated payload if not handled above
+    if (ws_pkt.api_allocated_payload) {
+        free(ws_pkt.payload);
+    }
+
     return ESP_OK;
 }
 
@@ -244,6 +256,12 @@ static esp_err_t ws_binary_fragmentation_handler(httpd_req_t *req)
 
         return send_ret != ESP_OK ? send_ret :ESP_OK;
     }
+
+    // Free API allocated payload if not handled above
+    if (ws_pkt.api_allocated_payload) {
+        free(ws_pkt.payload);
+    }
+
     return ESP_OK;
 }
 
@@ -316,15 +334,25 @@ static esp_err_t ws_server_error_handler(httpd_req_t *req)
         if (ws_pkt.len == 4 && ws_pkt.payload[0] == 0x01 && ws_pkt.payload[1] == 0x02 &&
             ws_pkt.payload[2] == 0x03 && ws_pkt.payload[3] == 0x04) {
             LOGD(TAG, "Simulating server error condition for test payload - sending 1011 close");
+            if (ws_pkt.api_allocated_payload) {
+                free(ws_pkt.payload);
+            }
             ws_send_server_error_close(req);
             return ESP_FAIL;
         }
 
-        // Simulate memory exhaustion: attempt to allocate an unreasonably large buffer
+    // Simulate memory exhaustion: attempt to allocate an unreasonably large buffer
         size_t alloc_size = ws_pkt.len + (1024 * 1024 * 10); // Try to allocate 10MB more than payload
+        LOGD(TAG, "ws_server_error_handler: Attempting large allocation (%"NEWLIB_NANO_COMPAT_FORMAT" bytes)", NEWLIB_NANO_COMPAT_CAST(alloc_size));
         uint8_t *response_buf = (uint8_t*)malloc(alloc_size);
         if (response_buf == NULL) {
             LOGD(TAG, "Memory exhaustion simulated - sending server error close");
+            // Free API-allocated payload on error path
+            if (ws_pkt.api_allocated_payload) {
+                LOGD(TAG, "ws_server_error_handler: Freeing API-allocated payload (%"NEWLIB_NANO_COMPAT_FORMAT" bytes) in error path", NEWLIB_NANO_COMPAT_CAST(ws_pkt.len + 1));
+                free(ws_pkt.payload);
+                ws_pkt.api_allocated_payload = false;
+            }
             ws_send_server_error_close(req);
             return ESP_FAIL;
         }
@@ -357,6 +385,11 @@ static esp_err_t ws_server_error_handler(httpd_req_t *req)
         }
 
         return send_ret != ESP_OK ? send_ret : ESP_OK;
+    }
+
+    // Free API allocated payload if not handled above
+    if (ws_pkt.api_allocated_payload) {
+        free(ws_pkt.payload);
     }
 
     return ESP_OK;
@@ -424,6 +457,11 @@ static esp_err_t ws_text_only_handler(httpd_req_t *req)
         }
 
         return send_ret != ESP_OK ? send_ret : ESP_OK;
+    }
+
+    // Free API allocated payload if not handled above
+    if (ws_pkt.api_allocated_payload) {
+        free(ws_pkt.payload);
     }
 
     return ESP_OK;
@@ -504,6 +542,12 @@ static esp_err_t ws_error_handling_handler(httpd_req_t *req)
           free(response_buf); // Always free the buffer if not sent
         }
     }
+
+    // Free API allocated payload if not handled above
+    if (ws_pkt.api_allocated_payload) {
+        free(ws_pkt.payload);
+    }
+
     return ESP_OK;
 }
 

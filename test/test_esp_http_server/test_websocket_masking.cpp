@@ -84,9 +84,15 @@ static esp_err_t ws_masking_enforcement_handler(httpd_req_t *req)
             event_group_set_bits(ws_event_group, WS_FRAME_SENT_BIT);
         }
 
+        if (ws_pkt.api_allocated_payload) {
+            free(ws_pkt.payload);
+        }
         return send_ret != ESP_OK ? send_ret : ESP_OK;
     }
 
+    if (ws_pkt.api_allocated_payload) {
+        free(ws_pkt.payload);
+    }
     return ESP_OK;
 }
 
